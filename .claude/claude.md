@@ -63,13 +63,14 @@ conda activate darwen
 
 | 类别 | 技术 | 版本 | 备注 |
 |------|------|------|------|
-| 语言 | | | |
-| 框架 | | | |
-| 数据库 | | | |
-| ORM | | | |
-| 前端 | | | |
-| 部署 | | | |
-| 测试 | | | |
+| 语言 | Python | 3.10.0 | conda 环境 darwen |
+| API 框架 | FastAPI | 0.110+ | 异步、自带 OpenAPI 文档 |
+| 数据库 | MySQL | 8.0 | utf8mb4，生产 14.103.133.34:13306 |
+| ORM | SQLAlchemy + Alembic | 2.0+ | 迁移管理 |
+| 数据获取 | akshare + httpx + yfinance | — | A股/美股数据源 |
+| 前端 | Vue 3 + Vite + ECharts | — | 端口 15002 |
+| 调度 | APScheduler | 3.10+ | MVP 轻量调度 |
+| 测试 | pytest | — | 单元+集成测试 |
 
 > Agent 生成代码时，严格限定在上述技术栈范围内。引入新依赖前必须向用户确认。
 
@@ -121,24 +122,57 @@ Agent 必须维护 `project-overview.md` 文件，供人类快速理解项目全
 
 ### 目录结构
 ```
-{待补充}
+darwen/
+├── backend/
+│   ├── main.py              # FastAPI 入口
+│   ├── config.py            # 配置（.env 读取）
+│   ├── database.py          # SQLAlchemy 引擎
+│   ├── models/              # 7 张 ORM 表
+│   ├── schemas/             # Pydantic 模型
+│   ├── api/                 # API 路由（screener/company/report/backtest）
+│   ├── pipeline/sec_edgar/  # 美股 SEC 数据管道
+│   ├── pipeline/cn_stock/   # A股 akshare 数据管道
+│   ├── factors/             # 30 因子计算引擎
+│   ├── scoring/             # 评分引擎（权重 + 红线 + 分层）
+│   └── backtest/            # 回测模块
+├── frontend/                # Vue 3 + Vite + ECharts
+├── migrations/              # Alembic 迁移
+├── .env                     # 环境变量（不入 git）
+└── prd.md                   # 产品需求文档
 ```
 
 ### 环境变量
 | 变量名 | 用途 | 示例值 |
 |--------|------|--------|
-| | | |
+| DB_HOST | MySQL 地址 | 14.103.133.34 |
+| DB_PORT | MySQL 端口 | 13306 |
+| DB_USER | 数据库用户 | root |
+| DB_PASSWORD | 数据库密码 | (见 .env) |
+| DB_NAME | 数据库名 | darwen |
+| API_PORT | 后端端口 | 15001 |
+| SEC_USER_AGENT | SEC 爬虫标识 | Darwen darwen@example.com |
 
 ### 常用命令
 ```bash
-# 启动开发服务器
-{待补充}
+# 激活环境
+conda activate darwen
 
-# 运行测试
-{待补充}
+# 启动后端 API
+cd /srv/workspaces/zheyang/darwen
+/opt/miniconda3/envs/darwen/bin/uvicorn backend.main:app --host 0.0.0.0 --port 15001
 
-# 构建部署
-{待补充}
+# 启动前端
+cd /srv/workspaces/zheyang/darwen/frontend
+npx vite --host 0.0.0.0 --port 15002
+
+# 数据库迁移
+conda run -n darwen alembic upgrade head
+
+# 拉取美股样本数据
+/opt/miniconda3/envs/darwen/bin/python -m backend.pipeline.sec_edgar.runner
+
+# 拉取A股样本数据
+/opt/miniconda3/envs/darwen/bin/python -m backend.pipeline.cn_stock.runner
 ```
 
 ---

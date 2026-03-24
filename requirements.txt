@@ -1,0 +1,31 @@
+# API Framework
+fastapi>=0.110.0
+uvicorn[standard]>=0.27.0
+
+# Database
+sqlalchemy>=2.0.0
+alembic>=1.13.0
+pymysql>=1.1.0
+cryptography>=42.0.0
+
+# HTTP Client
+httpx>=0.27.0
+
+# Data Sources
+akshare>=1.14.0
+yfinance>=0.2.36
+
+# Data Processing
+pandas>=2.2.0
+numpy>=1.26.0
+
+# Validation
+pydantic>=2.6.0
+pydantic-settings>=2.1.0
+
+# Scheduling
+apscheduler>=3.10.0
+
+# Utilities
+python-dotenv>=1.0.0
+loguru>=0.7.0
