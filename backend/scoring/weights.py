@@ -46,11 +46,18 @@ FACTOR_WEIGHTS = {
     },
 }
 
-# 分层阈值
+# 分层阈值 — 使用分位数动态分层
+# Top: 前 20%，Watch: 20%-60%，Reject: 后 40%
+TIER_PERCENTILES = {
+    "Top": 80,      # 总分 >= P80
+    "Watch": 40,    # 总分 >= P40
+    # < P40 → Reject
+}
+
+# 固定阈值（备选）
 TIER_THRESHOLDS = {
-    "Top": 75.0,
-    "Watch": 55.0,
-    # < 55 → Reject
+    "Top": 65.0,
+    "Watch": 45.0,
 }
 
 MODEL_NAMES = list(DIMENSION_WEIGHTS.keys())

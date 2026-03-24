@@ -4,6 +4,8 @@ import hashlib
 import json
 from datetime import date
 
+import numpy as np
+
 from loguru import logger
 from sqlalchemy.orm import Session
 from sqlalchemy import select, and_
@@ -84,9 +86,8 @@ def normalize_factors(db: Session, company_id: str, asof: date, market: str | No
     scores = {}
     for code, fv in factor_rows.items():
         if fv.raw_value is None:
-            # stub 因子给中性分
-            scores[code] = 50.0
-            fv.score = 50.0
+            # stub/无数据因子 → 不参与评分（scores 中不设值）
+            fv.score = None
             continue
 
         universe = _collect_universe_values(db, code, asof, market)
@@ -127,12 +128,11 @@ def compute_dimension_scores(
         total_weight = 0.0
 
         for code, w in weights.items():
-            score = factor_scores.get(code)
+            score = factor_scores.get(code)  # None = stub/无数据，不参与
             if score is not None:
                 weighted_sum += w * score
                 total_weight += w
 
-            # 收集红线
             redline = factor_redlines.get(code)
             if redline:
                 all_redlines.append(f"{code}:{redline}")
@@ -155,21 +155,47 @@ def compute_total_score(
     return total
 
 
-def classify_tier(total_score: float, redlines: list[str]) -> str:
+def classify_tier(total_score: float, redlines: list[str], top_threshold: float = 65.0, watch_threshold: float = 45.0) -> str:
     """分层：Top/Watch/Reject"""
-    # 强红线 → 直接 Reject
     strong_redlines = {"interest_coverage_below_1.5", "high_dilution_above_30pct"}
     for rl in redlines:
         tag = rl.split(":")[-1] if ":" in rl else rl
         if tag in strong_redlines:
             return "Reject"
 
-    if total_score >= TIER_THRESHOLDS["Top"] and not redlines:
+    if total_score >= top_threshold and not redlines:
         return "Top"
-    elif total_score >= TIER_THRESHOLDS["Watch"]:
+    elif total_score >= watch_threshold:
         return "Watch"
     else:
         return "Reject"
+
+
+def batch_classify_tiers(db: Session, asof: date, model: str = "balanced"):
+    """批量分层：用分位数动态确定阈值"""
+    from backend.scoring.weights import TIER_PERCENTILES
+
+    snapshots = db.query(ScoreSnapshot).filter(and_(
+        ScoreSnapshot.asof_date == asof,
+        ScoreSnapshot.model_version == model,
+    )).all()
+
+    if not snapshots:
+        return
+
+    scores = [s.total for s in snapshots if s.total is not None]
+    if not scores:
+        return
+
+    top_threshold = float(np.percentile(scores, TIER_PERCENTILES["Top"]))
+    watch_threshold = float(np.percentile(scores, TIER_PERCENTILES["Watch"]))
+
+    for s in snapshots:
+        redlines = json.loads(s.gating_flags) if s.gating_flags else []
+        s.tier = classify_tier(s.total or 0, redlines, top_threshold, watch_threshold)
+
+    db.commit()
+    return {"top_threshold": top_threshold, "watch_threshold": watch_threshold}
 
 
 def score_company(
