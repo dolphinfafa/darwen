@@ -4,9 +4,9 @@ from datetime import date, timedelta
 from typing import Optional
 
 from sqlalchemy.orm import Session
-from sqlalchemy import select, and_
+from sqlalchemy import select, and_, func
 
-from backend.models import Fact
+from backend.models import Fact, Security, MarketBar, Filing
 
 
 def get_fact_value(
@@ -107,3 +107,114 @@ def volatility(values: list[float]) -> float | None:
     if mean == 0:
         return None
     return float(np.std(arr) / abs(mean))
+
+
+# ──────────────────── 通用收入取值函数 ────────────────────
+
+_REVENUE_CONCEPTS = [
+    "Revenues",
+    "RevenueFromContractWithCustomerExcludingAssessedTax",
+    "revenue",
+]
+
+
+def get_revenue(db: Session, company_id: str, asof_date: date) -> Optional[float]:
+    """获取收入（兼容多种 concept 名称）"""
+    for concept in _REVENUE_CONCEPTS:
+        val = get_fact_value(db, company_id, concept, asof_date)
+        if val is not None:
+            return val
+    return None
+
+
+def get_revenue_series(db: Session, company_id: str, years: int = 6, asof_date: date = None) -> list[float]:
+    """获取年度收入序列（兼容多种 concept 名称）"""
+    for concept in _REVENUE_CONCEPTS:
+        series = get_annual_values(db, company_id, concept, years, asof_date)
+        if series:
+            return series
+    return []
+
+
+# ──────────────────── 行情数据辅助函数 ────────────────────
+
+def _get_security_id(db: Session, company_id: str) -> Optional[str]:
+    """获取公司的第一个 security_id"""
+    row = db.execute(
+        select(Security.security_id).where(Security.company_id == company_id).limit(1)
+    ).first()
+    return row[0] if row else None
+
+
+def get_close_prices(
+    db: Session,
+    company_id: str,
+    asof_date: date,
+    days: int = 252,
+) -> list[tuple[date, float]]:
+    """获取 asof_date 前 N 个交易日的收盘价（从旧到新）"""
+    sec_id = _get_security_id(db, company_id)
+    if not sec_id:
+        return []
+
+    stmt = (
+        select(MarketBar.trade_date, MarketBar.close)
+        .where(and_(
+            MarketBar.security_id == sec_id,
+            MarketBar.trade_date <= asof_date,
+            MarketBar.close.isnot(None),
+        ))
+        .order_by(MarketBar.trade_date.desc())
+        .limit(days)
+    )
+    rows = db.execute(stmt).fetchall()
+    return [(r[0], r[1]) for r in reversed(rows)]  # 旧→新
+
+
+def get_volume_series(
+    db: Session,
+    company_id: str,
+    asof_date: date,
+    days: int = 20,
+) -> list[float]:
+    """获取 asof_date 前 N 个交易日的成交量"""
+    sec_id = _get_security_id(db, company_id)
+    if not sec_id:
+        return []
+
+    stmt = (
+        select(MarketBar.volume)
+        .where(and_(
+            MarketBar.security_id == sec_id,
+            MarketBar.trade_date <= asof_date,
+            MarketBar.volume.isnot(None),
+            MarketBar.volume > 0,
+        ))
+        .order_by(MarketBar.trade_date.desc())
+        .limit(days)
+    )
+    return [r[0] for r in db.execute(stmt).fetchall()]
+
+
+def get_filing_count(
+    db: Session,
+    company_id: str,
+    asof_date: date,
+    form_types: list[str] | None = None,
+    years: int = 3,
+) -> int:
+    """获取公司在指定期间内的 filing 数量"""
+    earliest = asof_date - timedelta(days=years * 365)
+    stmt = (
+        select(func.count())
+        .select_from(Filing)
+        .where(and_(
+            Filing.company_id == company_id,
+            Filing.filed_date <= asof_date,
+            Filing.filed_date >= earliest,
+        ))
+    )
+    if form_types:
+        stmt = stmt.where(Filing.form_type.in_(form_types))
+    row = db.execute(stmt).first()
+    return row[0] if row else 0

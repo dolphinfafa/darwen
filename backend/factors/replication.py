@@ -4,7 +4,7 @@ from datetime import date
 from sqlalchemy.orm import Session
 
 from backend.factors.registry import register_factor, DIM_REPLICATION
-from backend.factors.helpers import get_fact_value, get_annual_values, safe_div, cagr, volatility
+from backend.factors.helpers import get_fact_value, get_annual_values, safe_div, cagr, volatility, get_revenue, get_revenue_series
 
 
 def _calc_invested_capital(db: Session, company_id: str, asof: date) -> float | None:
@@ -73,9 +73,7 @@ def compute_r2(db: Session, company_id: str, asof: date) -> dict:
 @register_factor("R3", DIM_REPLICATION, "收入增长质量")
 def compute_r3(db: Session, company_id: str, asof: date) -> dict:
     """R3: 5年收入 CAGR + 波动率"""
-    rev_series = get_annual_values(db, company_id, "Revenues", 6, asof) or \
-                 get_annual_values(db, company_id, "RevenueFromContractWithCustomerExcludingAssessedTax", 6, asof) or \
-                 get_annual_values(db, company_id, "revenue", 6, asof)
+    rev_series = get_revenue_series(db, company_id, 6, asof)
 
     rev_cagr = cagr(rev_series) if len(rev_series) >= 2 else None
     rev_vol = volatility(rev_series) if len(rev_series) >= 3 else None
@@ -86,8 +84,7 @@ def compute_r3(db: Session, company_id: str, asof: date) -> dict:
 @register_factor("R4", DIM_REPLICATION, "毛利与成本结构")
 def compute_r4(db: Session, company_id: str, asof: date) -> dict:
     """R4: 毛利率 + SGA 占比"""
-    revenue = get_fact_value(db, company_id, "Revenues", asof) or \
-              get_fact_value(db, company_id, "revenue", asof)
+    revenue = get_revenue(db, company_id, asof)
     gross_profit = get_fact_value(db, company_id, "GrossProfit", asof)
     sga = get_fact_value(db, company_id, "SellingGeneralAndAdministrativeExpense", asof)
 
@@ -128,7 +125,36 @@ def compute_r5(db: Session, company_id: str, asof: date) -> dict:
     }
 
 
-@register_factor("R6", DIM_REPLICATION, "成本高信号一致性（AI）")
+@register_factor("R6", DIM_REPLICATION, "成本高信号一致性")
 def compute_r6(db: Session, company_id: str, asof: date) -> dict:
-    """R6: MVP 返回中性分，Phase 2 用 LLM 实现"""
-    return {"raw": {"signal_cost_score": None}, "redline": None, "stub": True}
+    """R6: 信号一致性 — 收入增长 vs 利润增长 vs FCF增长的方向一致性
+    三个指标增长方向一致=高信号一致性=管理层说到做到
+    """
+    rev_series = get_revenue_series(db, company_id, 4, asof)
+    ni_series = get_annual_values(db, company_id, "NetIncomeLoss", 4, asof) or \
+                get_annual_values(db, company_id, "net_income", 4, asof)
+    ocf_series = get_annual_values(db, company_id, "NetCashProvidedByUsedInOperatingActivities", 4, asof) or \
+                 get_annual_values(db, company_id, "ocf", 4, asof)
+
+    if len(rev_series) < 2 or len(ni_series) < 2 or len(ocf_series) < 2:
+        return {"raw": {"signal_cost_score": None}, "redline": None}
+
+    n = min(len(rev_series), len(ni_series), len(ocf_series))
+    consistent = 0
+    total = 0
+
+    for i in range(n - 1):
+        rev_up = rev_series[i] > rev_series[i + 1]
+        ni_up = ni_series[i] > ni_series[i + 1]
+        ocf_up = ocf_series[i] > ocf_series[i + 1]
+        # 三个指标方向一致得1分，两个一致得0.5分
+        votes = sum([rev_up, ni_up, ocf_up])
+        if votes == 3 or votes == 0:  # 全涨或全跌
+            consistent += 1.0
+        else:
+            consistent += 0.33
+        total += 1
+
+    score = consistent / total if total > 0 else None
+
+    return {"raw": {"signal_cost_score": score}, "redline": None}

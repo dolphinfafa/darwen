@@ -25,7 +25,9 @@ CORE_CONCEPTS = [
     "ShortTermBorrowings",
     "CashAndCashEquivalentsAtCarryingValue",
     "CurrentAssets",
+    "AssetsCurrent",
     "CurrentLiabilities",
+    "LiabilitiesCurrent",
     # 现金流
     "NetCashProvidedByUsedInOperatingActivities",
     "PaymentsToAcquirePropertyPlantAndEquipment",

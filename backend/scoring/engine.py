@@ -37,22 +37,22 @@ FACTOR_DIRECTION = {
     "A2": "lower_better",   # 毛利波动越低越好
     "A3": "higher_better",  # 研发效率
     "A4": "lower_better",   # 集中度风险越低越好
-    "A5": "higher_better",
-    "A6": "lower_better",
+    "A5": "higher_better",  # 治理分越高越好
+    "A6": "lower_better",   # 监管事件占比越低越好
     # 优势积累
     "M1": "higher_better",  # 定价权
     "M2": "higher_better",  # 复利
-    "M3": "higher_better",  # 市占率
+    "M3": "higher_better",  # 市占率代理
     "M4": "higher_better",  # SGA 杠杆
-    "M5": "higher_better",
-    "M6": "higher_better",
+    "M5": "higher_better",  # 反脆弱分
+    "M6": "higher_better",  # 叙事一致性
     # 估值
     "V1": "higher_better",  # 估值相关（评分后越高越好）
-    "V2": "higher_better",
-    "V3": "higher_better",
-    "V4": "higher_better",
-    "V5": "higher_better",
-    "V6": "higher_better",
+    "V2": "higher_better",  # 安全边际越大越好
+    "V3": "higher_better",  # 增长越高越好
+    "V4": "lower_better",   # 回撤买点：回撤越深（负值越小）= 估值越有吸引力
+    "V5": "higher_better",  # 估值安全度（Earnings Yield 越高越便宜）
+    "V6": "higher_better",  # 流动性越好越好
 }
 
 

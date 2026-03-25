@@ -4,7 +4,7 @@ from datetime import date
 from sqlalchemy.orm import Session
 
 from backend.factors.registry import register_factor, DIM_SURVIVAL
-from backend.factors.helpers import get_fact_value, get_annual_values, safe_div, volatility
+from backend.factors.helpers import get_fact_value, get_annual_values, safe_div, volatility, get_revenue, get_close_prices
 
 
 @register_factor("S1", DIM_SURVIVAL, "杠杆与偿债压力")
@@ -46,9 +46,11 @@ def compute_s1(db: Session, company_id: str, asof: date) -> dict:
 @register_factor("S2", DIM_SURVIVAL, "流动性缓冲")
 def compute_s2(db: Session, company_id: str, asof: date) -> dict:
     """S2: 流动比率 & 现金比率"""
-    current_assets = get_fact_value(db, company_id, "CurrentAssets", asof) or \
+    current_assets = get_fact_value(db, company_id, "AssetsCurrent", asof) or \
+                     get_fact_value(db, company_id, "CurrentAssets", asof) or \
                      get_fact_value(db, company_id, "current_assets", asof)
-    current_liab = get_fact_value(db, company_id, "CurrentLiabilities", asof) or \
+    current_liab = get_fact_value(db, company_id, "LiabilitiesCurrent", asof) or \
+                   get_fact_value(db, company_id, "CurrentLiabilities", asof) or \
                    get_fact_value(db, company_id, "current_liabilities", asof)
     cash = get_fact_value(db, company_id, "CashAndCashEquivalentsAtCarryingValue", asof) or \
            get_fact_value(db, company_id, "cash", asof)
@@ -66,9 +68,7 @@ def compute_s3(db: Session, company_id: str, asof: date) -> dict:
           get_fact_value(db, company_id, "ocf", asof)
     capex = get_fact_value(db, company_id, "PaymentsToAcquirePropertyPlantAndEquipment", asof) or \
             get_fact_value(db, company_id, "capex_cash", asof) or 0
-    revenue = get_fact_value(db, company_id, "Revenues", asof) or \
-              get_fact_value(db, company_id, "RevenueFromContractWithCustomerExcludingAssessedTax", asof) or \
-              get_fact_value(db, company_id, "revenue", asof)
+    revenue = get_revenue(db, company_id, asof)
 
     fcf = (ocf - abs(capex)) if ocf is not None else None
     fcf_margin = safe_div(fcf, revenue)
@@ -78,7 +78,16 @@ def compute_s3(db: Session, company_id: str, asof: date) -> dict:
                  get_annual_values(db, company_id, "ocf", 5, asof)
     vol = volatility(ocf_series) if ocf_series else None
 
-    return {"raw": {"fcf": fcf, "fcf_margin": fcf_margin, "ocf_volatility": vol}, "redline": None}
+    # 股价年化波动率（市场端风险指标）
+    import numpy as np
+    prices = get_close_prices(db, company_id, asof, days=252)
+    price_vol = None
+    if len(prices) >= 60:
+        close_arr = [p[1] for p in prices]
+        returns = np.diff(np.log(close_arr))
+        price_vol = float(np.std(returns) * np.sqrt(252))  # 年化波动率
+
+    return {"raw": {"fcf_margin": fcf_margin, "ocf_volatility": vol, "price_volatility": price_vol}, "redline": None}
 
 
 @register_factor("S4", DIM_SURVIVAL, "盈利质量")

@@ -125,7 +125,9 @@ def run_historical_backtest(
             ret = compute_forward_return(db, ss.company_id, asof, 12)
             tier = ss.tier or "Reject"
             if ret is not None:
-                tier_returns[tier].append(ret)
+                # 裁剪极端异常值：单年收益超过 500% 或低于 -90% 视为数据异常
+                if -0.9 <= ret <= 5.0:
+                    tier_returns[tier].append(ret)
 
         # 计算各层平均收益
         year_result = {
