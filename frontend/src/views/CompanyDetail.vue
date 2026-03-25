@@ -21,6 +21,12 @@
             <div style="font-size:12px;color:var(--text-secondary);margin-top:4px">
               {{ detail.score.model_version }} · {{ detail.score.asof_date }}
             </div>
+            <!-- 红线警告 -->
+            <div v-if="gatingReasons.length" class="gating-warnings">
+              <div v-for="(reason, i) in gatingReasons" :key="i" class="gating-tag">
+                ⚠ {{ reason }}
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -81,24 +87,32 @@
               <tr>
                 <th>因子</th>
                 <th>名称</th>
+                <th>说明</th>
                 <th>原始值</th>
                 <th>归一化分</th>
-                <th>数据溯源</th>
+                <th>计算指标</th>
               </tr>
             </thead>
             <tbody>
               <tr v-for="f in detail.factors" :key="f.factor_code">
                 <td><span class="factor-code">{{ f.factor_code }}</span></td>
-                <td>{{ factorMeta[f.factor_code]?.name || '-' }}</td>
-                <td>{{ f.raw_value != null ? f.raw_value.toFixed(4) : '-' }}</td>
+                <td style="white-space:nowrap">{{ factorMeta[f.factor_code]?.name || '-' }}</td>
+                <td style="font-size:12px;color:var(--text-secondary);max-width:200px">
+                  {{ factorMeta[f.factor_code]?.desc || '-' }}
+                </td>
+                <td style="font-family:monospace;white-space:nowrap">{{ f.raw_value != null ? fmtRaw(f.raw_value) : '-' }}</td>
                 <td>
                   <div class="score-bar">
                     <div class="bar"><div class="bar-fill" :style="barStyle(f.score)"></div></div>
                     <span class="val">{{ f.score != null ? f.score.toFixed(1) : '-' }}</span>
                   </div>
                 </td>
-                <td style="font-size:11px;color:var(--text-secondary);max-width:300px;overflow:hidden;text-overflow:ellipsis">
-                  {{ f.lineage }}
+                <td style="font-size:11px;color:var(--text-secondary);max-width:260px">
+                  <div class="lineage-tags">
+                    <span v-for="(val, key) in parseLineage(f.lineage)" :key="key" class="lineage-tag">
+                      {{ lineageLabel(key) }}: {{ fmtLineageVal(val) }}
+                    </span>
+                  </div>
                 </td>
               </tr>
             </tbody>
@@ -223,6 +237,98 @@ const factorMeta = {
   V4: { name: '回撤买点', dim: 'valuation', weight: 0.12, desc: '6个月最大回撤，回撤深=买点好' },
   V5: { name: '估值安全', dim: 'valuation', weight: 0.18, desc: 'Earnings Yield + 连续亏损检测' },
   V6: { name: '交易流动性', dim: 'valuation', weight: 0.10, desc: '20日平均成交量' },
+}
+
+// 红线原因解析
+const GATING_LABELS = {
+  'interest_coverage_below_1.5': '利息保障倍数 < 1.5x（偿债风险）',
+  'high_dilution_above_30pct': '股权稀释 > 30%（融资激进）',
+  'net_debt_ebitda_above_4': '净负债/EBITDA > 4x（高杠杆）',
+  'consecutive_loss_with_negative_roe': '连续亏损（盈利风险）',
+}
+
+const gatingReasons = computed(() => {
+  if (!detail.value?.score?.gating_flags) return []
+  try {
+    const flags = JSON.parse(detail.value.score.gating_flags)
+    return flags.map(f => {
+      const tag = f.includes(':') ? f.split(':').slice(1).join(':') : f
+      return GATING_LABELS[tag] || tag
+    })
+  } catch { return [] }
+})
+
+// lineage 字段中 key 的中文映射
+const LINEAGE_LABELS = {
+  interest_coverage: '利息保障',
+  net_debt_ebitda: '净负债/EBITDA',
+  current_ratio: '流动比率',
+  cash_ratio: '现金比率',
+  fcf: '自由现金流',
+  fcf_margin: 'FCF利润率',
+  ocf_volatility: 'OCF波动',
+  price_volatility: '股价波动率',
+  ocf_to_ni: 'OCF/净利润',
+  dilution_3y: '3年稀释率',
+  risk_event_count_3y: '风险事件数',
+  roic_5y_avg: '5年ROIC均值',
+  roic_count: 'ROIC数据年数',
+  inc_roic: '增量ROIC',
+  rev_cagr_5y: '收入5年CAGR',
+  rev_vol_5y: '收入波动率',
+  gross_margin: '毛利率',
+  sga_ratio: 'SGA费率',
+  reinvest_rate: '再投资率',
+  dividends: '分红',
+  buyback: '回购',
+  signal_cost_score: '信号一致性',
+  shock_drawdown_op: '利润最大跌幅',
+  gross_margin_stability: '毛利稳定性',
+  rd_ratio: '研发费率',
+  concentration_proxy: '集中度代理',
+  governance_score: '治理综合分',
+  reg_event_ratio_3y: '监管事件占比',
+  pricing_power_proxy: '定价权代理',
+  roic: 'ROIC',
+  compounding_score: '复利分',
+  market_share_proxy: '市场地位',
+  sga_leverage: 'SGA杠杆',
+  countercyc_invest_score: '反脆弱分',
+  narrative_consistency: '叙事一致性',
+  earnings: '净利润',
+  book_value: '净资产',
+  mos_score: '安全边际分',
+  fcf_yield: 'FCF收益率',
+  roa: 'ROA',
+  growth_momentum: '增长动量',
+  momentum_12_1: '12-1动量',
+  drawdown_6m: '6月回撤',
+  valuation_safety: '估值安全度',
+  valuation_percentile: '估值分位',
+  adv_20: '20日均量',
+}
+
+const parseLineage = (lineage) => {
+  if (!lineage) return {}
+  try {
+    // Python dict 字符串: {'key': value, ...} → JSON
+    const json = lineage
+      .replace(/'/g, '"')
+      .replace(/None/g, 'null')
+      .replace(/True/g, 'true')
+      .replace(/False/g, 'false')
+    return JSON.parse(json)
+  } catch {
+    return {}
+  }
+}
+
+const lineageLabel = (key) => LINEAGE_LABELS[key] || key
+
+const fmtLineageVal = (v) => {
+  if (v === null || v === undefined) return '无数据'
+  if (typeof v === 'number') return fmtRaw(v)
+  return String(v)
 }
 
 const fmt = (v) => v != null ? v.toFixed(1) : '-'
@@ -415,6 +521,39 @@ onMounted(async () => {
   color: var(--text-secondary);
   font-size: 12px;
   padding: 8px 0;
+}
+
+/* 红线警告 */
+.gating-warnings {
+  margin-top: 6px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+}
+.gating-tag {
+  display: inline-block;
+  font-size: 11px;
+  color: #c5221f;
+  background: #fce8e6;
+  padding: 2px 8px;
+  border-radius: 10px;
+  white-space: nowrap;
+}
+
+/* 数据溯源标签 */
+.lineage-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.lineage-tag {
+  display: inline-block;
+  font-size: 11px;
+  background: #f1f3f4;
+  padding: 1px 6px;
+  border-radius: 4px;
+  white-space: nowrap;
 }
 
 /* 弹窗 */
