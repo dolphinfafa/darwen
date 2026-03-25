@@ -232,6 +232,26 @@ R6（信号一致性→收入/利润/OCF方向一致性）、A5（治理→稀�
 M3（市占率→log(Rev)×CAGR）、M5（反脆弱→逆周期capex）、M6（叙事一致性→收入利润同向变化率）、
 V2（安全边际→FCF Yield×(1+ROA)）、V4（回撤买点→6月最大回撤）、V5（估值红线→Earnings Yield+连续亏损检测）
 
+### 红线一票否决机制
+即使总分很高，触发以下任一强红线即归入 Reject：
+- `interest_coverage_below_1.5`：利息保障倍数 < 1.5x（偿债风险）
+- `high_dilution_above_30pct`：3年股权稀释 > 30%（融资激进）
+- `net_debt_ebitda_above_4`：净负债/EBITDA > 4x（高杠杆）
+- `consecutive_loss_with_negative_roe`：连续亏损（盈利风险）
+
+### 因子辅助函数
+- `get_revenue(db, company_id, asof)` — 统一取收入值，兼容 Revenues / RevenueFromContractWithCustomerExcludingAssessedTax / revenue
+- `get_revenue_series(db, company_id, years, asof)` — 统一取年度收入序列
+- `get_close_prices(db, company_id, asof, days)` — 取行情收盘价序列
+- `get_volume_series(db, company_id, asof, days)` — 取成交量序列
+- `get_filing_count(db, company_id, asof, form_types, years)` — 统计 filing 数量
+
+### 前端交互功能
+- CompanyDetail 页面：每个维度旁有 ⓘ 图标，点击弹窗显示维度说明 + 因子列表 + 权重分配
+- 每个维度分数可点击展开，查看 6 个子因子的原始值和归一化分
+- 红线触发时总分旁显示红色警告标签（如 "⚠ 股权稀释 > 30%"）
+- 因子明细表的数据溯源列解析 Python dict 为中文可读标签
+
 ---
 
 ## 10. 文档维护职责
