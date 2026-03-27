@@ -79,6 +79,16 @@
         </div>
       </div>
 
+      <!-- 历史价格 + 评分图表 -->
+      <div class="card">
+        <h3 style="margin-bottom:12px">历史价格与评分趋势</h3>
+        <div v-if="historyLoading" class="loading" style="padding:40px 0">加载历史数据...</div>
+        <div v-else-if="!history" class="loading" style="padding:40px 0;color:var(--text-secondary)">暂无历史数据</div>
+        <div v-else class="history-chart-container">
+          <v-chart :option="historyChartOption" autoresize style="height:420px" />
+        </div>
+      </div>
+
       <div class="card">
         <h3 style="margin-bottom:12px">因子明细 ({{ detail.factors.length }} 个)</h3>
         <div class="table-wrap">
@@ -158,19 +168,29 @@
 import { ref, computed, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
 import { use } from 'echarts/core'
-import { RadarChart } from 'echarts/charts'
-import { TitleComponent, TooltipComponent, LegendComponent } from 'echarts/components'
+import { RadarChart, LineChart } from 'echarts/charts'
+import {
+  TitleComponent, TooltipComponent, LegendComponent,
+  GridComponent, DataZoomComponent, MarkPointComponent, MarkLineComponent,
+} from 'echarts/components'
 import { CanvasRenderer } from 'echarts/renderers'
 import VChart from 'vue-echarts'
-import { getCompanyScore } from '../api'
+import { getCompanyScore, getCompanyHistory } from '../api'
 
-use([RadarChart, TitleComponent, TooltipComponent, LegendComponent, CanvasRenderer])
+use([
+  RadarChart, LineChart,
+  TitleComponent, TooltipComponent, LegendComponent,
+  GridComponent, DataZoomComponent, MarkPointComponent, MarkLineComponent,
+  CanvasRenderer,
+])
 
 const route = useRoute()
 const loading = ref(false)
 const detail = ref(null)
 const expandedDim = ref(null)
 const infoModal = ref(null)
+const history = ref(null)
+const historyLoading = ref(false)
 
 const dimensions = [
   {
@@ -391,6 +411,164 @@ const radarOption = computed(() => {
   }
 })
 
+// 维度颜色映射
+const DIM_COLORS = {
+  total: '#1a73e8',
+  survival: '#34a853',
+  replication: '#ea4335',
+  adaptation: '#fbbc04',
+  moat: '#9334e6',
+  valuation: '#ff6d01',
+}
+
+const TIER_COLORS = { Top: '#34a853', Watch: '#fbbc04', Reject: '#ea4335' }
+
+const historyChartOption = computed(() => {
+  if (!history.value) return {}
+  const h = history.value
+  const priceDates = h.prices.map(p => p.date)
+  const priceValues = h.prices.map(p => p.close)
+
+  // 评分数据 — 在价格时间轴上标记评分点
+  const scoreDates = h.scores.map(s => s.date)
+  const totalScores = h.scores.map(s => s.total)
+
+  // 维度得分系列
+  const dimSeries = [
+    { key: 'survival', name: '生存力' },
+    { key: 'replication', name: '复制力' },
+    { key: 'adaptation', name: '适应力' },
+    { key: 'moat', name: '优势积累' },
+    { key: 'valuation', name: '估值纪律' },
+  ].map(dim => ({
+    name: dim.name,
+    type: 'line',
+    xAxisIndex: 0,
+    yAxisIndex: 1,
+    data: scoreDates.map((d, i) => [d, h.scores[i][dim.key]]),
+    symbol: 'circle',
+    symbolSize: 4,
+    lineStyle: { width: 1, type: 'dashed' },
+    itemStyle: { color: DIM_COLORS[dim.key] },
+    emphasis: { focus: 'series' },
+    show: false,  // 默认隐藏，可在图例中切换
+  }))
+
+  // 分层标记区间颜色
+  const markAreas = []
+  for (let i = 0; i < h.scores.length; i++) {
+    const s = h.scores[i]
+    const start = s.date
+    const end = i + 1 < h.scores.length ? h.scores[i + 1].date : priceDates[priceDates.length - 1]
+    if (s.tier && end) {
+      markAreas.push([
+        { xAxis: start, itemStyle: { color: TIER_COLORS[s.tier], opacity: 0.06 } },
+        { xAxis: end },
+      ])
+    }
+  }
+
+  return {
+    tooltip: {
+      trigger: 'axis',
+      axisPointer: { type: 'cross' },
+      formatter(params) {
+        if (!params.length) return ''
+        let tip = `<b>${params[0].axisValue}</b><br/>`
+        params.forEach(p => {
+          const val = p.value
+          const v = Array.isArray(val) ? val[1] : val
+          if (v != null) {
+            tip += `${p.marker} ${p.seriesName}: <b>${typeof v === 'number' ? v.toFixed(2) : v}</b><br/>`
+          }
+        })
+        return tip
+      },
+    },
+    legend: {
+      data: ['股价', '总分', '生存力', '复制力', '适应力', '优势积累', '估值纪律'],
+      selected: {
+        '股价': true, '总分': true,
+        '生存力': false, '复制力': false, '适应力': false, '优势积累': false, '估值纪律': false,
+      },
+      bottom: 0,
+      textStyle: { fontSize: 11 },
+    },
+    grid: { left: 60, right: 60, top: 40, bottom: 70 },
+    xAxis: {
+      type: 'category',
+      data: priceDates,
+      axisLabel: {
+        formatter(v) {
+          return v.substring(0, 7)  // YYYY-MM
+        },
+        interval: Math.floor(priceDates.length / 8),
+      },
+      boundaryGap: false,
+    },
+    yAxis: [
+      {
+        type: 'value',
+        name: '股价',
+        position: 'left',
+        axisLabel: { formatter: '{value}' },
+      },
+      {
+        type: 'value',
+        name: '评分',
+        position: 'right',
+        min: 0,
+        max: 100,
+        axisLabel: { formatter: '{value}' },
+      },
+    ],
+    dataZoom: [
+      { type: 'inside', start: 0, end: 100 },
+      { type: 'slider', start: 0, end: 100, bottom: 30, height: 20 },
+    ],
+    series: [
+      {
+        name: '股价',
+        type: 'line',
+        yAxisIndex: 0,
+        data: priceValues,
+        showSymbol: false,
+        lineStyle: { width: 1.5, color: '#5470c6' },
+        itemStyle: { color: '#5470c6' },
+        areaStyle: { color: 'rgba(84,112,198,0.08)' },
+        markArea: { silent: true, data: markAreas },
+      },
+      {
+        name: '总分',
+        type: 'line',
+        xAxisIndex: 0,
+        yAxisIndex: 1,
+        data: scoreDates.map((d, i) => [d, totalScores[i]]),
+        symbol: 'circle',
+        symbolSize: 8,
+        lineStyle: { width: 2.5, color: DIM_COLORS.total },
+        itemStyle: { color: DIM_COLORS.total },
+        markPoint: {
+          data: h.scores.map((s, i) => ({
+            coord: [scoreDates[i], totalScores[i]],
+            value: s.tier,
+            itemStyle: { color: TIER_COLORS[s.tier] || '#999' },
+            symbolSize: 0,
+            label: {
+              show: true,
+              formatter: '{value}',
+              fontSize: 10,
+              position: 'top',
+              color: TIER_COLORS[s.tier] || '#999',
+            },
+          })),
+        },
+      },
+      ...dimSeries,
+    ],
+  }
+})
+
 onMounted(async () => {
   loading.value = true
   try {
@@ -400,6 +578,16 @@ onMounted(async () => {
     console.error(e)
   }
   loading.value = false
+
+  // 并行加载历史数据
+  historyLoading.value = true
+  try {
+    const { data } = await getCompanyHistory(route.params.id, { model: 'balanced' })
+    history.value = data
+  } catch (e) {
+    console.error('历史数据加载失败:', e)
+  }
+  historyLoading.value = false
 })
 </script>
 
@@ -521,6 +709,12 @@ onMounted(async () => {
   color: var(--text-secondary);
   font-size: 12px;
   padding: 8px 0;
+}
+
+/* 历史图表 */
+.history-chart-container {
+  width: 100%;
+  min-height: 420px;
 }
 
 /* 红线警告 */

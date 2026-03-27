@@ -211,7 +211,9 @@ if __name__ == "__main__":
 
     db = SessionLocal()
     try:
-        result = run_historical_backtest(db, start_year=2012, end_year=2024, market="US")
-        print(json.dumps(result, indent=2, ensure_ascii=False, default=str))
+        for mkt in ["US", "CN_A"]:
+            logger.info(f"========== 开始回测: {mkt} ==========")
+            result = run_historical_backtest(db, start_year=2012, end_year=2025, market=mkt)
+            print(json.dumps(result, indent=2, ensure_ascii=False, default=str))
     finally:
         db.close()

@@ -1,28 +1,28 @@
 # -*- coding: utf-8 -*-
 """三套权重方案 + 因子维度内权重"""
 
-# 维度权重方案（PRD 表二）
+# 维度权重方案（回测优化版 — 提高估值纪律权重以强化"好价格买好公司"）
 DIMENSION_WEIGHTS = {
     "balanced": {
-        "survival": 0.25,
+        "survival": 0.20,
         "replication": 0.20,
-        "adaptation": 0.15,
+        "adaptation": 0.10,
         "moat": 0.25,
-        "valuation": 0.15,
+        "valuation": 0.25,
     },
     "conservative": {
-        "survival": 0.30,
-        "replication": 0.18,
-        "adaptation": 0.12,
-        "moat": 0.25,
-        "valuation": 0.15,
+        "survival": 0.25,
+        "replication": 0.15,
+        "adaptation": 0.10,
+        "moat": 0.20,
+        "valuation": 0.30,
     },
     "aggressive": {
-        "survival": 0.20,
+        "survival": 0.15,
         "replication": 0.25,
-        "adaptation": 0.20,
+        "adaptation": 0.15,
         "moat": 0.25,
-        "valuation": 0.10,
+        "valuation": 0.20,
     },
 }
 

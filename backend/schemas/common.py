@@ -19,6 +19,7 @@ class ScoreResponse(BaseModel):
     company_id: str
     name: str
     market: str
+    industry_name: str | None = None
     asof_date: date
     model_version: str
     survival: float | None
@@ -45,6 +46,29 @@ class CompanyScoreDetail(BaseModel):
     company: CompanyBrief
     score: ScoreResponse
     factors: list[FactorDetail]
+
+
+class PricePoint(BaseModel):
+    date: date
+    close: float
+
+
+class ScorePoint(BaseModel):
+    date: date
+    total: float | None
+    survival: float | None = None
+    replication: float | None = None
+    adaptation: float | None = None
+    moat: float | None = None
+    valuation: float | None = None
+    tier: str | None = None
+
+
+class CompanyHistory(BaseModel):
+    company_id: str
+    ticker: str | None = None
+    prices: list[PricePoint]
+    scores: list[ScorePoint]
 
 
 class ScreenerParams(BaseModel):

@@ -33,6 +33,7 @@ def screener(
             ScoreSnapshot,
             Company.name,
             Company.market,
+            Company.industry_name,
         )
         .join(Company, Company.company_id == ScoreSnapshot.company_id)
         .where(ScoreSnapshot.model_version == model)
@@ -55,11 +56,12 @@ def screener(
     rows = db.execute(stmt).all()
 
     results = []
-    for ss, name, mkt in rows:
+    for ss, name, mkt, ind_name in rows:
         results.append(ScoreResponse(
             company_id=ss.company_id,
             name=name,
             market=mkt,
+            industry_name=ind_name,
             asof_date=ss.asof_date,
             model_version=ss.model_version,
             survival=ss.survival,

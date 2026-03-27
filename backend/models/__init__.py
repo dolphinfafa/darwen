@@ -6,6 +6,7 @@ from backend.models.fact import Fact
 from backend.models.factor_value import FactorValue
 from backend.models.score_snapshot import ScoreSnapshot
 from backend.models.market_bar import MarketBar
+from backend.models.user import User
 
 __all__ = [
     "Company",
@@ -15,4 +16,5 @@ __all__ = [
     "FactorValue",
     "ScoreSnapshot",
     "MarketBar",
+    "User",
 ]

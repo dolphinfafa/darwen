@@ -62,6 +62,78 @@ def ingest_us_prices(db: Session, ticker: str, security_id: str, start: str = "2
     return len(batch)
 
 
+def ingest_cn_prices(db: Session, ticker: str, security_id: str, start: str = "20080101") -> int:
+    """通过 akshare 拉取单只A股历史日线（前复权）"""
+    try:
+        import akshare as ak
+        df = ak.stock_zh_a_hist(symbol=ticker, period="daily", start_date=start, adjust="qfq")
+        if df is None or df.empty:
+            return 0
+    except Exception as e:
+        logger.warning(f"{ticker} akshare 失败: {e}")
+        return 0
+
+    existing_dates = set(
+        row[0] for row in db.execute(
+            select(MarketBar.trade_date).where(MarketBar.security_id == security_id)
+        ).fetchall()
+    )
+
+    batch = []
+    for _, row in df.iterrows():
+        trade_date = pd.to_datetime(row["日期"]).date()
+        if trade_date in existing_dates:
+            continue
+
+        def safe_float(val):
+            try:
+                v = float(val)
+                return v if pd.notna(v) else None
+            except (ValueError, TypeError):
+                return None
+
+        batch.append(MarketBar(
+            security_id=security_id,
+            trade_date=trade_date,
+            open=safe_float(row.get("开盘")),
+            high=safe_float(row.get("最高")),
+            low=safe_float(row.get("最低")),
+            close=safe_float(row.get("收盘")),
+            volume=safe_float(row.get("成交量")),
+            market_cap=None,
+        ))
+
+    if batch:
+        db.add_all(batch)
+        db.commit()
+
+    return len(batch)
+
+
+def ingest_all_cn_prices(db: Session):
+    """批量拉取所有A股证券的历史价格"""
+    from backend.models import Company
+    # 找所有A股公司对应的 security
+    cn_secs = db.execute(
+        select(Security).join(Company, Company.company_id == Security.company_id)
+        .where(Company.market == "CN_A")
+    ).scalars().all()
+
+    logger.info(f"待拉取 {len(cn_secs)} 只A股行情")
+
+    success = 0
+    for i, sec in enumerate(cn_secs):
+        n = ingest_cn_prices(db, sec.ticker, sec.security_id)
+        if n > 0:
+            success += 1
+            logger.info(f"  {sec.ticker}: +{n} bars")
+        if (i + 1) % 10 == 0:
+            logger.info(f"A股行情进度: {i+1}/{len(cn_secs)}, 成功: {success}")
+
+    logger.info(f"A股行情拉取完成: {success}/{len(cn_secs)} 成功")
+    return success
+
+
 def ingest_all_us_prices(db: Session):
     """批量拉取所有美股证券的历史价格"""
     securities = db.execute(

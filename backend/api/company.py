@@ -8,8 +8,11 @@ from sqlalchemy.orm import Session
 from sqlalchemy import select, and_
 
 from backend.database import get_db
-from backend.models import Company, Security, ScoreSnapshot, FactorValue
-from backend.schemas.common import CompanyBrief, ScoreResponse, FactorDetail, CompanyScoreDetail
+from backend.models import Company, Security, ScoreSnapshot, FactorValue, MarketBar
+from backend.schemas.common import (
+    CompanyBrief, ScoreResponse, FactorDetail, CompanyScoreDetail,
+    PricePoint, ScorePoint, CompanyHistory,
+)
 
 router = APIRouter(prefix="/v1", tags=["company"])
 
@@ -86,6 +89,71 @@ def company_score_detail(
     ]
 
     return CompanyScoreDetail(company=brief, score=score, factors=factors)
+
+
+@router.get("/company/{company_id}/history", response_model=CompanyHistory)
+def company_history(
+    company_id: str,
+    model: str = Query("balanced"),
+    db: Session = Depends(get_db),
+):
+    """股票历史价格 + 历史评分时间序列"""
+    company = db.get(Company, company_id)
+    if not company:
+        raise HTTPException(404, f"公司 {company_id} 不存在")
+
+    sec = db.execute(
+        select(Security).where(Security.company_id == company_id).limit(1)
+    ).scalar()
+
+    # 历史价格：按月采样（每月最后一条）
+    prices = []
+    if sec:
+        bars = db.execute(
+            select(MarketBar.trade_date, MarketBar.close)
+            .where(and_(
+                MarketBar.security_id == sec.security_id,
+                MarketBar.close.isnot(None),
+            ))
+            .order_by(MarketBar.trade_date)
+        ).all()
+        # 按月采样：取每月最后一个交易日
+        monthly = {}
+        for trade_date, close in bars:
+            key = (trade_date.year, trade_date.month)
+            monthly[key] = PricePoint(date=trade_date, close=round(close, 2))
+        prices = sorted(monthly.values(), key=lambda p: p.date)
+
+    # 历史评分
+    snapshots = db.execute(
+        select(ScoreSnapshot)
+        .where(and_(
+            ScoreSnapshot.company_id == company_id,
+            ScoreSnapshot.model_version == model,
+        ))
+        .order_by(ScoreSnapshot.asof_date)
+    ).scalars().all()
+
+    scores = [
+        ScorePoint(
+            date=s.asof_date,
+            total=s.total,
+            survival=s.survival,
+            replication=s.replication,
+            adaptation=s.adaptation,
+            moat=s.moat,
+            valuation=s.valuation,
+            tier=s.tier,
+        )
+        for s in snapshots
+    ]
+
+    return CompanyHistory(
+        company_id=company_id,
+        ticker=sec.ticker if sec else None,
+        prices=prices,
+        scores=scores,
+    )
 
 
 @router.get("/companies", response_model=list[CompanyBrief])
