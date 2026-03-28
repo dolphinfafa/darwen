@@ -33,7 +33,7 @@ class Settings(BaseSettings):
     def async_database_url(self) -> str:
         return self.database_url.replace("mysql+pymysql", "mysql+aiomysql")
 
-    model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
+    model_config = {"env_file": ".env", "env_file_encoding": "utf-8", "extra": "ignore"}
 
 
 @lru_cache

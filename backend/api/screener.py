@@ -5,7 +5,7 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
-from sqlalchemy import select, and_, desc, asc
+from sqlalchemy import select, and_, desc, asc, func
 
 from backend.database import get_db
 from backend.models import ScoreSnapshot, Company, Security
@@ -23,11 +23,22 @@ def screener(
     asof: Optional[date] = Query(None),
     sort_by: str = Query("total", description="排序字段"),
     sort_desc: bool = Query(True),
-    limit: int = Query(200, le=1000),
+    limit: int = Query(500, le=1000),
     offset: int = Query(0),
     db: Session = Depends(get_db),
 ):
-    """股票筛选：按评分分层、市场、行业过滤"""
+    """股票筛选：按评分分层、市场、行业过滤，默认只返回最新一期评分"""
+
+    # 如果没有指定 asof，自动取最新评分日期
+    if not asof:
+        latest = db.execute(
+            select(func.max(ScoreSnapshot.asof_date))
+            .where(ScoreSnapshot.model_version == model)
+        ).scalar()
+        if not latest:
+            return []
+        asof = latest
+
     stmt = (
         select(
             ScoreSnapshot,
@@ -36,7 +47,10 @@ def screener(
             Company.industry_name,
         )
         .join(Company, Company.company_id == ScoreSnapshot.company_id)
-        .where(ScoreSnapshot.model_version == model)
+        .where(and_(
+            ScoreSnapshot.model_version == model,
+            ScoreSnapshot.asof_date == asof,
+        ))
     )
 
     if market:
@@ -45,8 +59,6 @@ def screener(
         stmt = stmt.where(Company.industry_name.contains(industry))
     if tier:
         stmt = stmt.where(ScoreSnapshot.tier == tier)
-    if asof:
-        stmt = stmt.where(ScoreSnapshot.asof_date == asof)
 
     # 排序
     sort_col = getattr(ScoreSnapshot, sort_by, ScoreSnapshot.total)

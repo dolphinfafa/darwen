@@ -11,7 +11,7 @@ from backend.database import get_db
 from backend.models import Company, Security, ScoreSnapshot, FactorValue, MarketBar
 from backend.schemas.common import (
     CompanyBrief, ScoreResponse, FactorDetail, CompanyScoreDetail,
-    PricePoint, ScorePoint, CompanyHistory,
+    PricePoint, ScorePoint, CompanyHistory, LatestPrice,
 )
 
 router = APIRouter(prefix="/v1", tags=["company"])
@@ -88,7 +88,47 @@ def company_score_detail(
         for fv in db.execute(fv_stmt).scalars().all()
     ]
 
-    return CompanyScoreDetail(company=brief, score=score, factors=factors)
+    # 获取最新股价
+    latest_price = None
+    if sec:
+        currency = company.currency or ("CNY" if company.market == "CN_A" else "USD")
+        # A股：取不复权实时价格
+        if company.market == "CN_A" and sec.ticker:
+            try:
+                import akshare as ak
+                df = ak.stock_zh_a_hist(
+                    symbol=sec.ticker, period="daily",
+                    start_date="20260101", adjust="",
+                )
+                if df is not None and not df.empty:
+                    last_row = df.iloc[-1]
+                    import pandas as pd
+                    latest_price = LatestPrice(
+                        date=pd.to_datetime(last_row["日期"]).date(),
+                        close=round(float(last_row["收盘"]), 2),
+                        currency=currency,
+                    )
+            except Exception:
+                pass
+        # 美股/兜底：从 MarketBar 取
+        if not latest_price:
+            bar = db.execute(
+                select(MarketBar.trade_date, MarketBar.close)
+                .where(and_(
+                    MarketBar.security_id == sec.security_id,
+                    MarketBar.close.isnot(None),
+                ))
+                .order_by(MarketBar.trade_date.desc())
+                .limit(1)
+            ).first()
+            if bar:
+                latest_price = LatestPrice(
+                    date=bar[0],
+                    close=round(bar[1], 2),
+                    currency=currency,
+                )
+
+    return CompanyScoreDetail(company=brief, score=score, factors=factors, latest_price=latest_price)
 
 
 @router.get("/company/{company_id}/history", response_model=CompanyHistory)

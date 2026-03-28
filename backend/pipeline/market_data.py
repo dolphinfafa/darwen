@@ -66,7 +66,7 @@ def ingest_cn_prices(db: Session, ticker: str, security_id: str, start: str = "2
     """通过 akshare 拉取单只A股历史日线（前复权）"""
     try:
         import akshare as ak
-        df = ak.stock_zh_a_hist(symbol=ticker, period="daily", start_date=start, adjust="qfq")
+        df = ak.stock_zh_a_hist(symbol=ticker, period="daily", start_date=start, adjust="hfq")
         if df is None or df.empty:
             return 0
     except Exception as e:

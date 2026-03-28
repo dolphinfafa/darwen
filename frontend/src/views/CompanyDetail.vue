@@ -11,9 +11,13 @@
         <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px">
           <div>
             <h2 style="margin:0">{{ detail.company.name }}</h2>
-            <span style="color:var(--text-secondary)">
+            <div style="color:var(--text-secondary);margin-top:4px">
               {{ detail.company.ticker }} · {{ detail.company.market }} · {{ detail.company.industry_name || '未分类' }}
-            </span>
+            </div>
+            <div v-if="detail.latest_price" class="current-price">
+              <span class="price-value">{{ detail.latest_price.currency === 'CNY' ? '¥' : '$' }}{{ detail.latest_price.close }}</span>
+              <span class="price-date">{{ detail.latest_price.date }}</span>
+            </div>
           </div>
           <div style="text-align:right">
             <div style="font-size:32px;font-weight:700">{{ fmt(detail.score.total) }}</div>
@@ -423,15 +427,41 @@ const DIM_COLORS = {
 
 const TIER_COLORS = { Top: '#34a853', Watch: '#fbbc04', Reject: '#ea4335' }
 
+// 将评分日期对齐到价格时间轴上最近的日期
+function findNearestDate(target, dates) {
+  let best = dates[0]
+  let bestDiff = Math.abs(new Date(target) - new Date(best))
+  for (const d of dates) {
+    const diff = Math.abs(new Date(target) - new Date(d))
+    if (diff < bestDiff) { bestDiff = diff; best = d }
+  }
+  return best
+}
+
 const historyChartOption = computed(() => {
   if (!history.value) return {}
   const h = history.value
   const priceDates = h.prices.map(p => p.date)
   const priceValues = h.prices.map(p => p.close)
 
-  // 评分数据 — 在价格时间轴上标记评分点
-  const scoreDates = h.scores.map(s => s.date)
-  const totalScores = h.scores.map(s => s.total)
+  if (!priceDates.length) return {}
+
+  // 评分数据 — 对齐到价格时间轴
+  // 在价格日期数组中填入评分（无评分的日期为null），用 connectNulls 连线
+  const scoreMap = {}
+  const dimMaps = { survival: {}, replication: {}, adaptation: {}, moat: {}, valuation: {} }
+  const tierMap = {}
+
+  for (const s of h.scores) {
+    const aligned = findNearestDate(s.date, priceDates)
+    scoreMap[aligned] = s.total
+    tierMap[aligned] = s.tier
+    for (const dim of Object.keys(dimMaps)) {
+      dimMaps[dim][aligned] = s[dim]
+    }
+  }
+
+  const totalData = priceDates.map(d => scoreMap[d] ?? null)
 
   // 维度得分系列
   const dimSeries = [
@@ -443,26 +473,26 @@ const historyChartOption = computed(() => {
   ].map(dim => ({
     name: dim.name,
     type: 'line',
-    xAxisIndex: 0,
     yAxisIndex: 1,
-    data: scoreDates.map((d, i) => [d, h.scores[i][dim.key]]),
+    data: priceDates.map(d => dimMaps[dim.key][d] ?? null),
+    connectNulls: true,
     symbol: 'circle',
     symbolSize: 4,
     lineStyle: { width: 1, type: 'dashed' },
     itemStyle: { color: DIM_COLORS[dim.key] },
     emphasis: { focus: 'series' },
-    show: false,  // 默认隐藏，可在图例中切换
   }))
 
   // 分层标记区间颜色
   const markAreas = []
-  for (let i = 0; i < h.scores.length; i++) {
-    const s = h.scores[i]
-    const start = s.date
-    const end = i + 1 < h.scores.length ? h.scores[i + 1].date : priceDates[priceDates.length - 1]
-    if (s.tier && end) {
+  const scoredDates = priceDates.filter(d => scoreMap[d] != null)
+  for (let i = 0; i < scoredDates.length; i++) {
+    const d = scoredDates[i]
+    const tier = tierMap[d]
+    const end = i + 1 < scoredDates.length ? scoredDates[i + 1] : priceDates[priceDates.length - 1]
+    if (tier && end) {
       markAreas.push([
-        { xAxis: start, itemStyle: { color: TIER_COLORS[s.tier], opacity: 0.06 } },
+        { xAxis: d, itemStyle: { color: TIER_COLORS[tier], opacity: 0.06 } },
         { xAxis: end },
       ])
     }
@@ -476,8 +506,7 @@ const historyChartOption = computed(() => {
         if (!params.length) return ''
         let tip = `<b>${params[0].axisValue}</b><br/>`
         params.forEach(p => {
-          const val = p.value
-          const v = Array.isArray(val) ? val[1] : val
+          const v = p.value
           if (v != null) {
             tip += `${p.marker} ${p.seriesName}: <b>${typeof v === 'number' ? v.toFixed(2) : v}</b><br/>`
           }
@@ -499,9 +528,7 @@ const historyChartOption = computed(() => {
       type: 'category',
       data: priceDates,
       axisLabel: {
-        formatter(v) {
-          return v.substring(0, 7)  // YYYY-MM
-        },
+        formatter(v) { return v.substring(0, 7) },
         interval: Math.floor(priceDates.length / 8),
       },
       boundaryGap: false,
@@ -541,25 +568,25 @@ const historyChartOption = computed(() => {
       {
         name: '总分',
         type: 'line',
-        xAxisIndex: 0,
         yAxisIndex: 1,
-        data: scoreDates.map((d, i) => [d, totalScores[i]]),
+        data: totalData,
+        connectNulls: true,
         symbol: 'circle',
         symbolSize: 8,
         lineStyle: { width: 2.5, color: DIM_COLORS.total },
         itemStyle: { color: DIM_COLORS.total },
         markPoint: {
-          data: h.scores.map((s, i) => ({
-            coord: [scoreDates[i], totalScores[i]],
-            value: s.tier,
-            itemStyle: { color: TIER_COLORS[s.tier] || '#999' },
+          data: scoredDates.map(d => ({
+            coord: [d, scoreMap[d]],
+            value: tierMap[d],
+            itemStyle: { color: TIER_COLORS[tierMap[d]] || '#999' },
             symbolSize: 0,
             label: {
               show: true,
-              formatter: '{value}',
+              formatter: (p) => p.value,
               fontSize: 10,
               position: 'top',
-              color: TIER_COLORS[s.tier] || '#999',
+              color: TIER_COLORS[tierMap[d]] || '#999',
             },
           })),
         },
@@ -709,6 +736,23 @@ onMounted(async () => {
   color: var(--text-secondary);
   font-size: 12px;
   padding: 8px 0;
+}
+
+/* 当前股价 */
+.current-price {
+  margin-top: 8px;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+.price-value {
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--text);
+}
+.price-date {
+  font-size: 12px;
+  color: var(--text-secondary);
 }
 
 /* 历史图表 */

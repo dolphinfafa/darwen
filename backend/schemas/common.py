@@ -42,10 +42,17 @@ class FactorDetail(BaseModel):
     lineage: str | None = None
 
 
+class LatestPrice(BaseModel):
+    date: date
+    close: float
+    currency: str = "USD"
+
+
 class CompanyScoreDetail(BaseModel):
     company: CompanyBrief
     score: ScoreResponse
     factors: list[FactorDetail]
+    latest_price: LatestPrice | None = None
 
 
 class PricePoint(BaseModel):
