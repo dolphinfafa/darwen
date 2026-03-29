@@ -1,12 +1,112 @@
 <template>
   <div>
-    <div style="margin-bottom:16px">
+    <div style="margin-bottom:16px;display:flex;align-items:center;gap:12px">
       <router-link to="/" class="btn">&larr; 返回筛选</router-link>
+      <select v-model="modelVersion" @change="reloadData" style="padding:6px 10px;border-radius:6px;border:1px solid var(--border)">
+        <option value="v1.0">V1.0 达尔文流程</option>
+        <option value="v0.0">V0.0 多因子加权</option>
+      </select>
     </div>
 
     <div v-if="loading" class="loading">加载中...</div>
     <div v-else-if="!detail" class="loading">未找到数据</div>
-    <template v-else>
+
+    <!-- ═══ V1.0 达尔文流程模型 ═══ -->
+    <template v-if="modelVersion === 'v1.0' && v1Data">
+      <div class="card" style="margin-bottom:16px">
+        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px">
+          <div>
+            <h2 style="margin:0">{{ detail.company.name }}</h2>
+            <div style="color:var(--text-secondary);margin-top:4px">
+              {{ detail.company.ticker }} · {{ detail.company.market }} · {{ detail.company.industry_name || '未分类' }}
+            </div>
+            <div v-if="detail.latest_price" class="current-price">
+              <span class="price-value">{{ detail.latest_price.currency === 'CNY' ? '¥' : '$' }}{{ detail.latest_price.close }}</span>
+              <span class="price-date">{{ detail.latest_price.date }}</span>
+            </div>
+          </div>
+          <div style="text-align:right">
+            <div style="font-size:32px;font-weight:700">{{ v1Data.quality_score != null ? v1Data.quality_score.toFixed(1) : '-' }}</div>
+            <span :class="'v1-status v1-' + (v1Data.status || '').replace(' ', '_')">{{ v1Data.status }}</span>
+            <div v-if="v1Data.quality_tier" style="font-size:12px;color:var(--text-secondary);margin-top:4px">
+              质量等级 {{ v1Data.quality_tier }} · V1.0
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 硬排除检查 -->
+      <div class="card" style="margin-bottom:16px">
+        <h3 style="margin-bottom:12px">Layer A: 硬排除检查</h3>
+        <div class="filter-grid">
+          <div v-for="f in v1Data.hard_reject.filters" :key="f.name" class="filter-card" :class="f.passed ? 'pass' : 'fail'">
+            <div class="filter-icon">{{ f.passed ? '✓' : '✗' }}</div>
+            <div class="filter-name">{{ f.name }}</div>
+            <div v-if="f.reason" class="filter-reason">{{ f.reason }}</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 质量评分（仅通过排除的） -->
+      <div v-if="v1Data.hard_reject.passed" class="card" style="margin-bottom:16px">
+        <h3 style="margin-bottom:12px">Layer B: 质量评分（{{ v1Data.quality_score?.toFixed(1) || '-' }} / 100）</h3>
+        <div class="quality-grid">
+          <div class="quality-dim">
+            <div class="quality-label">Q1 资本回报质量</div>
+            <div class="quality-bar">
+              <div class="bar"><div class="bar-fill" :style="barStyle(v1Data.quality_details?.Q1 / 40 * 100)"></div></div>
+              <span class="val">{{ v1Data.quality_details?.Q1?.toFixed(1) }} / 40</span>
+            </div>
+          </div>
+          <div class="quality-dim">
+            <div class="quality-label">Q2 护城河与稳定性</div>
+            <div class="quality-bar">
+              <div class="bar"><div class="bar-fill" :style="barStyle(v1Data.quality_details?.Q2 / 35 * 100)"></div></div>
+              <span class="val">{{ v1Data.quality_details?.Q2?.toFixed(1) }} / 35</span>
+            </div>
+          </div>
+          <div class="quality-dim">
+            <div class="quality-label">Q3 资本配置与治理</div>
+            <div class="quality-bar">
+              <div class="bar"><div class="bar-fill" :style="barStyle(v1Data.quality_details?.Q3 / 25 * 100)"></div></div>
+              <span class="val">{{ v1Data.quality_details?.Q3?.toFixed(1) }} / 25</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 估值闸门 -->
+      <div v-if="v1Data.hard_reject.passed && v1Data.fair_price" class="card" style="margin-bottom:16px">
+        <h3 style="margin-bottom:12px">Layer C: 估值闸门</h3>
+        <div class="valuation-row">
+          <div class="val-item">
+            <div class="val-num">{{ v1Data.fair_price.trailing_pe != null ? v1Data.fair_price.trailing_pe.toFixed(1) + 'x' : 'N/A' }}</div>
+            <div class="val-label">TTM PE</div>
+          </div>
+          <div class="val-item">
+            <div class="val-num">{{ v1Data.fair_price.pe_threshold ? '≤ ' + v1Data.fair_price.pe_threshold + 'x' : '-' }}</div>
+            <div class="val-label">PE 阈值</div>
+          </div>
+          <div class="val-item">
+            <span :class="'v1-status v1-' + (v1Data.fair_price.gate_result || '').replace(' ', '_')" style="font-size:16px">
+              {{ v1Data.fair_price.gate_result }}
+            </span>
+            <div class="val-label" style="margin-top:4px">闸门结果</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 被拒绝原因 -->
+      <div v-if="v1Data.reject_reasons && v1Data.reject_reasons.length" class="card" style="margin-bottom:16px">
+        <h3 style="margin-bottom:8px;color:#c5221f">排除原因</h3>
+        <ul style="margin:0;padding-left:20px">
+          <li v-for="(r, i) in v1Data.reject_reasons" :key="i" style="color:#c5221f;margin:4px 0">{{ r }}</li>
+        </ul>
+      </div>
+    </template>
+
+    <!-- ═══ V0.0 旧模型 ═══ -->
+    <template v-if="modelVersion === 'v0.0' && detail">
       <div class="card" style="margin-bottom:16px">
         <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px">
           <div>
@@ -179,7 +279,7 @@ import {
 } from 'echarts/components'
 import { CanvasRenderer } from 'echarts/renderers'
 import VChart from 'vue-echarts'
-import { getCompanyScore, getCompanyHistory } from '../api'
+import { getCompanyScore, getCompanyHistory, getCompanyScoreV1 } from '../api'
 
 use([
   RadarChart, LineChart,
@@ -195,6 +295,8 @@ const expandedDim = ref(null)
 const infoModal = ref(null)
 const history = ref(null)
 const historyLoading = ref(false)
+const modelVersion = ref('v1.0')
+const v1Data = ref(null)
 
 const dimensions = [
   {
@@ -606,16 +708,25 @@ onMounted(async () => {
   }
   loading.value = false
 
-  // 并行加载历史数据
+  // 并行加载历史数据 + V1.0 评分
   historyLoading.value = true
   try {
-    const { data } = await getCompanyHistory(route.params.id, { model: 'balanced' })
-    history.value = data
+    const [histResp, v1Resp] = await Promise.allSettled([
+      getCompanyHistory(route.params.id, { model: 'balanced' }),
+      getCompanyScoreV1(route.params.id),
+    ])
+    if (histResp.status === 'fulfilled') history.value = histResp.value.data
+    if (v1Resp.status === 'fulfilled') v1Data.value = v1Resp.value.data
   } catch (e) {
-    console.error('历史数据加载失败:', e)
+    console.error('数据加载失败:', e)
   }
   historyLoading.value = false
 })
+
+async function reloadData() {
+  // V0.0 数据已在 onMounted 加载，V1.0 也已加载
+  // 版本切换仅前端显示切换，无需重新请求
+}
 </script>
 
 <style scoped>
@@ -737,6 +848,50 @@ onMounted(async () => {
   font-size: 12px;
   padding: 8px 0;
 }
+
+/* V1.0 状态标签 */
+.v1-status {
+  display: inline-block;
+  padding: 4px 12px;
+  border-radius: 12px;
+  font-size: 13px;
+  font-weight: 600;
+}
+.v1-BUY { background: #e6f4ea; color: #137333; }
+.v1-WATCH { background: #fef7e0; color: #b06000; }
+.v1-TOO_EXPENSIVE { background: #fce8e6; color: #c5221f; }
+.v1-REJECT { background: #f1f3f4; color: #5f6368; }
+
+/* 硬排除卡片 */
+.filter-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 10px;
+}
+.filter-card {
+  padding: 12px 14px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+}
+.filter-card.pass { border-color: #34a853; background: rgba(52,168,83,0.04); }
+.filter-card.fail { border-color: #ea4335; background: rgba(234,67,53,0.06); }
+.filter-icon { font-size: 18px; font-weight: 700; margin-bottom: 4px; }
+.filter-card.pass .filter-icon { color: #34a853; }
+.filter-card.fail .filter-icon { color: #ea4335; }
+.filter-name { font-size: 13px; font-weight: 600; }
+.filter-reason { font-size: 11px; color: var(--text-secondary); margin-top: 4px; }
+
+/* 质量维度 */
+.quality-grid { display: flex; flex-direction: column; gap: 12px; }
+.quality-dim { display: flex; align-items: center; gap: 12px; }
+.quality-label { width: 140px; font-size: 13px; font-weight: 500; white-space: nowrap; }
+.quality-bar { flex: 1; display: flex; align-items: center; gap: 8px; }
+
+/* 估值行 */
+.valuation-row { display: flex; gap: 24px; align-items: center; }
+.val-item { text-align: center; }
+.val-num { font-size: 24px; font-weight: 700; }
+.val-label { font-size: 12px; color: var(--text-secondary); }
 
 /* 当前股价 */
 .current-price {

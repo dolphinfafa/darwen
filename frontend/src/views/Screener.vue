@@ -3,7 +3,11 @@
     <h2 style="margin-bottom:16px">股票筛选</h2>
 
     <div class="filters">
-      <select v-model="filters.market" @change="onMarketChange">
+      <select v-model="filters.model">
+        <option value="v1.0">V1.0 达尔文流程</option>
+        <option value="balanced">V0.0 多因子加权</option>
+      </select>
+      <select v-model="filters.market" @change="onFilterChange">
         <option value="">全部市场</option>
         <option value="US">美股</option>
         <option value="CN_A">A股</option>
@@ -12,16 +16,20 @@
         <option value="">全部行业</option>
         <option v-for="ind in industries" :key="ind" :value="ind">{{ ind }}</option>
       </select>
-      <select v-model="filters.tier">
-        <option value="">全部分层</option>
-        <option value="Top">Top</option>
-        <option value="Watch">Watch</option>
-        <option value="Reject">Reject</option>
-      </select>
-      <select v-model="filters.model">
-        <option value="balanced">基准</option>
-        <option value="conservative">保守</option>
-        <option value="aggressive">激进</option>
+      <select v-model="filters.tier" @change="onFilterChange">
+        <template v-if="isV1">
+          <option value="">全部状态</option>
+          <option value="BUY">BUY</option>
+          <option value="WATCH">WATCH</option>
+          <option value="TOO_EXPENSIVE">TOO EXPENSIVE</option>
+          <option value="REJECT">REJECT</option>
+        </template>
+        <template v-else>
+          <option value="">全部分层</option>
+          <option value="Top">Top</option>
+          <option value="Watch">Watch</option>
+          <option value="Reject">Reject</option>
+        </template>
       </select>
       <button class="btn btn-primary" @click="fetchData">筛选</button>
     </div>
@@ -32,6 +40,9 @@
       <template v-else>
         <div style="margin-bottom:8px;font-size:12px;color:var(--text-secondary)">
           共 {{ rows.length }} 家
+          <span v-if="isV1" style="margin-left:8px">
+            BUY {{ tierCount('BUY') }} · WATCH {{ tierCount('WATCH') }} · TOO EXPENSIVE {{ tierCount('TOO_EXPENSIVE') }} · REJECT {{ tierCount('REJECT') }}
+          </span>
         </div>
         <div class="table-wrap">
           <table>
@@ -40,13 +51,16 @@
                 <th @click="sortBy('name')">公司</th>
                 <th @click="sortBy('market')">市场</th>
                 <th>行业</th>
-                <th @click="sortBy('total')">总分</th>
-                <th>分层</th>
-                <th @click="sortBy('survival')">生存力</th>
-                <th @click="sortBy('replication')">复制力</th>
-                <th @click="sortBy('adaptation')">适应力</th>
-                <th @click="sortBy('moat')">优势积累</th>
-                <th @click="sortBy('valuation')">估值纪律</th>
+                <th @click="sortBy('total')">{{ isV1 ? '质量分' : '总分' }}</th>
+                <th>{{ isV1 ? '状态' : '分层' }}</th>
+                <th v-if="isV1" @click="sortBy('survival')">资本回报</th>
+                <th v-if="isV1" @click="sortBy('moat')">护城河</th>
+                <th v-if="isV1" @click="sortBy('replication')">资本配置</th>
+                <th v-if="!isV1" @click="sortBy('survival')">生存力</th>
+                <th v-if="!isV1" @click="sortBy('replication')">复制力</th>
+                <th v-if="!isV1" @click="sortBy('adaptation')">适应力</th>
+                <th v-if="!isV1" @click="sortBy('moat')">优势积累</th>
+                <th v-if="!isV1" @click="sortBy('valuation')">估值纪律</th>
               </tr>
             </thead>
             <tbody>
@@ -60,12 +74,14 @@
                     <span class="val">{{ fmt(r.total) }}</span>
                   </div>
                 </td>
-                <td><span :class="'tier tier-' + r.tier">{{ r.tier }}</span></td>
+                <td>
+                  <span :class="'tier tier-' + (r.tier || '').replace(' ', '_')">{{ r.tier }}</span>
+                </td>
                 <td>{{ fmt(r.survival) }}</td>
-                <td>{{ fmt(r.replication) }}</td>
-                <td>{{ fmt(r.adaptation) }}</td>
-                <td>{{ fmt(r.moat) }}</td>
-                <td>{{ fmt(r.valuation) }}</td>
+                <td>{{ fmt(isV1 ? r.moat : r.replication) }}</td>
+                <td>{{ fmt(isV1 ? r.replication : r.adaptation) }}</td>
+                <td v-if="!isV1">{{ fmt(r.moat) }}</td>
+                <td v-if="!isV1">{{ fmt(r.valuation) }}</td>
               </tr>
             </tbody>
           </table>
@@ -76,7 +92,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { getScreener, getIndustries } from '../api'
 
@@ -84,9 +100,11 @@ const router = useRouter()
 const loading = ref(false)
 const rows = ref([])
 const industries = ref([])
-const filters = ref({ market: '', tier: '', model: 'balanced', industry: '' })
+const filters = ref({ market: '', tier: '', model: 'v1.0', industry: '' })
 
+const isV1 = computed(() => filters.value.model === 'v1.0')
 const fmt = (v) => v != null ? v.toFixed(1) : '-'
+const tierCount = (t) => rows.value.filter(r => r.tier === t).length
 
 const barStyle = (v) => {
   const pct = Math.min(100, Math.max(0, v || 0))
@@ -110,9 +128,8 @@ async function loadIndustries() {
   } catch {}
 }
 
-function onMarketChange() {
-  filters.value.industry = ''
-  loadIndustries()
+function onFilterChange() {
+  filters.value.tier = ''
   fetchData()
 }
 
@@ -131,8 +148,20 @@ const fetchData = async () => {
   loading.value = false
 }
 
+watch(() => filters.value.model, () => {
+  filters.value.tier = ''
+  fetchData()
+})
+
 onMounted(() => {
   loadIndustries()
   fetchData()
 })
 </script>
+
+<style scoped>
+.tier-BUY { background: #e6f4ea; color: #137333; }
+.tier-WATCH { background: #fef7e0; color: #b06000; }
+.tier-TOO_EXPENSIVE { background: #fce8e6; color: #c5221f; }
+.tier-REJECT { background: #f1f3f4; color: #5f6368; }
+</style>

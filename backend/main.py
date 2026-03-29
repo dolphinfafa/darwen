@@ -10,6 +10,7 @@ from backend.api.backtest import router as backtest_router
 from backend.api.auth import router as auth_router
 from backend.api.admin import router as admin_router
 from backend.api.backtest_v2 import router as backtest_v2_router
+from backend.api.scoring_v1 import router as scoring_v1_router
 
 settings = get_settings()
 
@@ -35,6 +36,7 @@ app.include_router(backtest_router)
 app.include_router(auth_router)
 app.include_router(admin_router)
 app.include_router(backtest_v2_router)
+app.include_router(scoring_v1_router)
 
 
 @app.on_event("startup")

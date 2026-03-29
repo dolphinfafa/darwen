@@ -33,6 +33,10 @@ export function getCompanyScore(companyId, params = {}) {
   return api.get(`/company/${companyId}/score`, { params })
 }
 
+export function getCompanyScoreV1(companyId, params = {}) {
+  return api.get(`/company/${companyId}/score-v1`, { params })
+}
+
 export function getCompanyHistory(companyId, params = {}) {
   return api.get(`/company/${companyId}/history`, { params })
 }
