@@ -43,7 +43,7 @@ def company_score_detail(
         ticker=sec.ticker if sec else None,
     )
 
-    # 获取评分快照
+    # 获取评分快照（如果指定模型无数据，fallback 到其他模型）
     ss_stmt = select(ScoreSnapshot).where(and_(
         ScoreSnapshot.company_id == company_id,
         ScoreSnapshot.model_version == model,
@@ -53,6 +53,14 @@ def company_score_detail(
     ss_stmt = ss_stmt.order_by(ScoreSnapshot.asof_date.desc()).limit(1)
 
     snapshot = db.execute(ss_stmt).scalar()
+    if not snapshot:
+        # fallback: 尝试其他模型
+        snapshot = db.execute(
+            select(ScoreSnapshot)
+            .where(ScoreSnapshot.company_id == company_id)
+            .order_by(ScoreSnapshot.asof_date.desc())
+            .limit(1)
+        ).scalar()
     if not snapshot:
         raise HTTPException(404, f"公司 {company_id} 无评分数据")
 
