@@ -121,12 +121,14 @@ def parse_and_store_facts(db: Session, company_id: str, data: dict) -> int:
                 batch.append(Fact(
                     fact_id=fact_id,
                     company_id=company_id,
-                    taxonomy_or_account="us-gaap",
+                    account_code="us-gaap",
                     concept=concept_name,
                     unit=unit_type,
                     period_end=period_end_date,
+                    fiscal_year=period_end_date.year,
                     value=float(val) if val is not None else None,
                     available_date=filed_date,
+                    accepted_date=filed_date,
                     source_type="SEC",
                     source_id=f"companyfacts_{company_id}",
                 ))

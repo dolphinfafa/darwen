@@ -1,5 +1,7 @@
 # -*- coding: utf-8 -*-
-from sqlalchemy import String, Enum
+from datetime import date
+
+from sqlalchemy import String, Enum, Date, Boolean
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from backend.database import Base
@@ -18,8 +20,21 @@ class Company(Base):
     cik: Mapped[str | None] = mapped_column(String(20), unique=True, comment="SEC CIK (美股)")
     stock_code: Mapped[str | None] = mapped_column(String(20), comment="A股代码 (如 600519)")
 
+    instrument_type: Mapped[str] = mapped_column(
+        Enum(
+            "COMMON", "REIT", "ETF", "FUND", "SPAC", "ADR", "PREFERRED", "WARRANT",
+            "BANK", "INSURANCE", "BROKER", "SHELL", "OTHER",
+            name="instrument_type_enum",
+        ),
+        default="COMMON",
+        index=True,
+        comment="证券类型，用于 Q0 非适用证券过滤",
+    )
+    list_date: Mapped[date | None] = mapped_column(Date, comment="上市日期")
+    is_excluded: Mapped[bool] = mapped_column(
+        Boolean, default=False, comment="是否被强制排除（管理员标记）"
+    )
+
     securities: Mapped[list["Security"]] = relationship(back_populates="company")
     filings: Mapped[list["Filing"]] = relationship(back_populates="company")
     facts: Mapped[list["Fact"]] = relationship(back_populates="company")
-    factor_values: Mapped[list["FactorValue"]] = relationship(back_populates="company")
-    score_snapshots: Mapped[list["ScoreSnapshot"]] = relationship(back_populates="company")

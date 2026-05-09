@@ -3,21 +3,15 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from backend.config import get_settings
-from backend.api.screener import router as screener_router
-from backend.api.company import router as company_router
-from backend.api.report import router as report_router
-from backend.api.backtest import router as backtest_router
 from backend.api.auth import router as auth_router
 from backend.api.admin import router as admin_router
-from backend.api.backtest_v2 import router as backtest_v2_router
-from backend.api.scoring_v1 import router as scoring_v1_router
 
 settings = get_settings()
 
 app = FastAPI(
-    title="Darwen - AI进化论股票筛选系统",
-    description="基于达尔文进化论投资方法论的股票筛选系统，覆盖美股与A股",
-    version="0.1.0",
+    title="Darwen V2 - 三层漏斗股票筛选系统",
+    description="基于 Pulak Prasad《What I Learned About Investing from Darwin》方法论的股票筛选系统：ROCE 质量门槛 → 风险过滤 → 价格闸门",
+    version="2.0.0",
 )
 
 app.add_middleware(
@@ -29,14 +23,12 @@ app.add_middleware(
 )
 
 
-app.include_router(screener_router)
-app.include_router(company_router)
-app.include_router(report_router)
-app.include_router(backtest_router)
 app.include_router(auth_router)
 app.include_router(admin_router)
-app.include_router(backtest_v2_router)
-app.include_router(scoring_v1_router)
+# V2 路由将在 M5 阶段注册：
+#   app.include_router(screening_router)
+#   app.include_router(backtest_router)
+#   app.include_router(user_settings_router)
 
 
 @app.on_event("startup")

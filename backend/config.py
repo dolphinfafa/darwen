@@ -18,6 +18,13 @@ class Settings(BaseSettings):
     # SEC EDGAR
     sec_user_agent: str = "Darwen darwen@example.com"
 
+    # Data Sources
+    tushare_token: str = ""
+    polygon_api_key: str = ""
+
+    # AI Layer
+    darwen_fernet_key: str = ""
+
     # Logging
     log_level: str = "INFO"
 

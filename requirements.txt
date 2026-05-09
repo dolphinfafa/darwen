@@ -14,6 +14,12 @@ httpx>=0.27.0
 # Data Sources
 akshare>=1.14.0
 yfinance>=0.2.36
+tushare>=1.4.0
+polygon-api-client>=1.14.0
+boto3>=1.34.0
+
+# AI Providers
+openai>=1.30.0
 
 # Data Processing
 pandas>=2.2.0
