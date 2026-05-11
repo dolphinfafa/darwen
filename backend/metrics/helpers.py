@@ -98,43 +98,57 @@ def get_fact_value_asof(
     asof_date: date,
     *,
     market: Optional[str] = None,
+    annual_only: bool = False,
+    fiscal_year_end_month: Optional[int] = None,
+    disclosure_lag_days: int = 120,
 ) -> FactValue:
-    """取 ≤ asof_date 的最新可见 fact（按 accepted_date 严格点时，回退 available_date）。
+    """取 ≤ asof_date 的最新可见 fact。
 
-    用于截面计算（如最新现金、最新股本）。
+    可见性三轨过滤（按优先级）：
+    1. accepted_date <= asof（严格点时，SEC / TS-FS 有此字段）
+    2. accepted_date NULL 且 available_date <= asof（部分数据集）
+    3. accepted_date 和 available_date 双 NULL（AKSHARE）→ 用 period_end + disclosure_lag_days
+       作为隐含可见期（A 股年报披露窗口约 4 个月）
+
+    annual_only=True：仅取月份匹配 fiscal_year_end_month 的 fact（避免季报混入）。
     """
     if market is None:
         market = _get_market(db, company_id)
         if market is None:
             return FactValue(value=None)
 
+    if annual_only and fiscal_year_end_month is None:
+        fiscal_year_end_month = get_fiscal_year_end(db, company_id, market=market)
+
+    from sqlalchemy import func as sa_func
+    from datetime import timedelta
+
+    lag_cutoff = asof_date - timedelta(days=disclosure_lag_days)
+
     for src in source_chain(market):
         for concept in candidate_concepts(canonical, src):
-            # 优先 accepted_date <= asof，回退 available_date <= asof
+            conditions = [
+                Fact.company_id == company_id,
+                Fact.source_type == src,
+                Fact.concept == concept,
+                Fact.value.isnot(None),
+                # 三轨可见性过滤
+                (
+                    (Fact.accepted_date.isnot(None)) & (Fact.accepted_date <= asof_date)
+                ) | (
+                    (Fact.accepted_date.is_(None)) & (Fact.available_date.isnot(None)) &
+                    (Fact.available_date <= asof_date)
+                ) | (
+                    (Fact.accepted_date.is_(None)) & (Fact.available_date.is_(None)) &
+                    (Fact.period_end <= lag_cutoff)
+                ),
+            ]
+            if annual_only and fiscal_year_end_month:
+                conditions.append(sa_func.month(Fact.period_end) == fiscal_year_end_month)
+
             row = db.execute(
-                select(
-                    Fact.fact_id,
-                    Fact.value,
-                    Fact.period_end,
-                )
-                .where(
-                    and_(
-                        Fact.company_id == company_id,
-                        Fact.source_type == src,
-                        Fact.concept == concept,
-                        # 点时严格：accepted_date 有值则用 accepted_date；否则用 available_date
-                        # （AKSHARE 旧数据 accepted_date 全 NULL）
-                        Fact.value.isnot(None),
-                    )
-                )
-                .where(
-                    # 双轨过滤
-                    (
-                        (Fact.accepted_date.isnot(None)) & (Fact.accepted_date <= asof_date)
-                    ) | (
-                        (Fact.accepted_date.is_(None)) & (Fact.available_date <= asof_date)
-                    )
-                )
+                select(Fact.fact_id, Fact.value, Fact.period_end)
+                .where(and_(*conditions))
                 .order_by(Fact.period_end.desc())
                 .limit(1)
             ).first()
@@ -233,9 +247,9 @@ def get_fiscal_year_end(
 ) -> Optional[int]:
     """启发式推断公司的财年末月份（1-12）。
 
-    用 Revenues 字段在最近 3 年中出现次数最多的月份作为财年末。
-    美股 12 月底为主，少数 9 月（Apple）/6 月（Microsoft historic）等。
-    A 股一律 12 月。
+    A 股一律 12 月。美股按 NetIncomeLoss 的"每年最大值 period_end 月份"众数推断。
+    原理：年报全年 NI > 单季 NI，每年取最大值对应的 period_end 即为财年末。
+    回退：若 NetIncomeLoss 不可用，用 Revenues 月份众数（次精度）。
     """
     if market is None:
         market = _get_market(db, company_id)
@@ -245,7 +259,37 @@ def get_fiscal_year_end(
     if market == "CN_A":
         return 12
 
-    # 美股按 Revenues period_end 月份众数
+    # 美股优先用 NetIncomeLoss 取每年最大值的月份
+    for src in source_chain(market):
+        for concept in candidate_concepts("net_income", src):
+            # 取每年最大 NI 值的 period_end，然后看月份众数
+            sub = (
+                select(Fact.period_end, Fact.value)
+                .where(
+                    and_(
+                        Fact.company_id == company_id,
+                        Fact.source_type == src,
+                        Fact.concept == concept,
+                        Fact.value.isnot(None),
+                    )
+                )
+            )
+            rows = db.execute(sub).all()
+            if not rows:
+                continue
+            # 按年分组，取每年值最大的 period_end
+            by_year: dict[int, tuple[date, float]] = {}
+            for pe, val in rows:
+                year = pe.year
+                if year not in by_year or val > by_year[year][1]:
+                    by_year[year] = (pe, val)
+            month_counts: dict[int, int] = {}
+            for pe, _ in by_year.values():
+                month_counts[pe.month] = month_counts.get(pe.month, 0) + 1
+            if month_counts:
+                return max(month_counts.items(), key=lambda kv: kv[1])[0]
+
+    # 回退：Revenue period_end 月份众数（不可靠但聊胜于无）
     for src in source_chain(market):
         for concept in candidate_concepts("revenue", src):
             rows = db.execute(

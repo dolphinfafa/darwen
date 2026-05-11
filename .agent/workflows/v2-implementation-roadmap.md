@@ -2,7 +2,7 @@
 
 本文档定义 Darwen V2 重构剩余里程碑（M2-M7）的执行顺序、关键依赖与验收标准。
 
-**当前状态**：M1 数据基础已完成（`milestones/2026-05-09.md`）。M2.1 字段映射 + M2.2 ROCE 计算 + M2.5 ROCE 部分回填 + SEC 字段修补 已完成（`milestones/2026-05-11.md`）。M2.3/M2.4 (杠杆/现金质量/稀释/估值) + M3-M7 待实施。
+**当前状态**：M1 数据基础已完成（`milestones/2026-05-09.md`）。M2 指标预计算 + SEC 字段修补 全部完成（`milestones/2026-05-11.md`）。M3-M7 待实施。
 
 ---
 
@@ -12,14 +12,14 @@
 M1 数据基础 ✅
 M1.x SEC 字段修补 ✅ (CORE_CONCEPTS 扩 7 个 tag，548 美股增量重拉)
     ↓
-M2 指标预计算（ROCE/CFO_NI/NetDebt等） ← 关键路径
-   M2.1 字段映射 & helpers ✅
+M2 指标预计算（5 模块全部完成）✅
+   M2.1 字段映射 & helpers (三轨可见性 + annual_only + 财年末启发式) ✅
    M2.2 ROCE 严格口径 + 5Y/10Y 门槛 ✅
-   M2.3 杠杆 / 现金质量      ← TODO
-   M2.4 稀释 / 估值           ← TODO
-   M2.5 调度器 + 全量回填     ROCE 部分 ✅；M2.3/M2.4 待补
+   M2.3 杠杆 (R1) + 现金质量 (R2) ✅
+   M2.4 稀释 (R3) + 估值 (V Layer) ✅
+   M2.5 调度器整合 + 全量回填 (598/598, 72,680 metric rows, 86,811 lineage) ✅
     ↓
-M3 三层漏斗引擎（Q/R/V Layer） ← 关键路径
+M3 三层漏斗引擎（Q/R/V Layer） ← 关键路径，下一目标
     ↓
 M4 AI 风险层（ChatGPT + MiniMax） ← 关键路径
     ↓
@@ -32,6 +32,7 @@ M7 回测 + 端到端验证
 非关键路径（可并行）：
 M1.9 SEC filing 文本增强
 M1.10 Polygon News 接入
+数据修补：A 股不复权 close / 金融股 shares 量级 / TSLA 财年末
 ```
 
 ---
@@ -48,13 +49,15 @@ M1.10 Polygon News 接入
 backend/metrics/
 ├── __init__.py        ✅
 ├── field_map.py       ✅ 24 canonical → SEC us-gaap / TS-FS / AKSHARE 三向映射 + source 优先级链
-├── helpers.py         ✅ get_fact_value / get_fact_value_asof / get_annual_periods / get_fiscal_year_end
-├── roce.py            ✅ RoceComponents + compute_roce_series + evaluate_quality_gate (PRD 第 4 节)
-├── compute.py         ✅ ROCE 调度 + INSERT ON DUPLICATE KEY UPDATE + 血缘日志
-├── leverage.py        ⏳ net_debt / interest_coverage / current_ratio
-├── cash_quality.py    ⏳ CFO/NI / FCF / FCF<0 年数
-├── dilution.py        ⏳ share_count_cagr_5y
-└── valuation.py       ⏳ pe_ttm / ev_ebit（依赖 market_bar 最新收盘）
+├── helpers.py         ✅ get_fact_value / get_fact_value_asof (三轨可见性 + annual_only) /
+│                         get_annual_periods (annual_only) / get_fiscal_year_end (NI-mode 推断)
+├── roce.py            ✅ compute_roce_series + evaluate_quality_gate (PRD 第 4 节，Q5_RECENT_NEG_CAP)
+├── leverage.py        ✅ compute_leverage_series（消费 ebit_by_year）
+├── cash_quality.py    ✅ compute_cash_quality_series + evaluate_cash_quality_gate
+├── dilution.py        ✅ compute_dilution_series + evaluate_dilution_gate（拆股检测）
+├── valuation.py       ✅ compute_valuation_snapshot (market_cap / pe_ttm / ev_ebit)
+└── compute.py         ✅ persist_all_metrics_for_company 调度 5 模块 + 共享 fact_meta_lookup
+                          每模块独立 formula_version（roce_v1 / leverage_v1 / cash_quality_v1 / dilution_v1 / valuation_v1）
 ```
 
 ### M2.1/M2.2 已落地的关键决策
@@ -109,26 +112,35 @@ def compute_all_metrics(db: Session, company_id: str, asof_date: date) -> list[M
 - 取 `period_end` 在 `[asof_date - 5y, asof_date]` 内的财年（必须满足 `accepted_date <= asof_date`，点时严格）
 - 输出：`{2020: 0.275, 2021: 0.288, ..., 2024: 0.291}`
 
-### 验收命令（实测）
+### 验收命令（实测，含 5 模块）
 
 ```bash
-# 1. ROCE 单股验证（开发期）
+# 1. 单股快速验证（含 5 模块）
 /opt/miniconda3/envs/darwen/bin/python -c "
+from datetime import date
 from backend.database import SessionLocal
 from backend.metrics.roce import compute_roce_series, evaluate_quality_gate
+from backend.metrics.leverage import compute_leverage_series
+from backend.metrics.cash_quality import compute_cash_quality_series, evaluate_cash_quality_gate
+from backend.metrics.dilution import compute_dilution_series, evaluate_dilution_gate
+from backend.metrics.valuation import compute_valuation_snapshot
 db = SessionLocal()
-series = compute_roce_series(db, 'CN_600519', (2018, 2024))
-gate = evaluate_quality_gate(series)
-print(f'茅台 5Y median={gate.median_5y*100:.1f}% pass={gate.pass_5y_gate}')
-# 实测: 5Y median=66.9% pass=True
+cid = 'US_0000789019'  # MSFT
+roce = compute_roce_series(db, cid, (2014, 2024))
+ebit = {c.year: c.ebit for c in roce if c.ebit}
+gate = evaluate_quality_gate(roce)
+val = compute_valuation_snapshot(db, cid, date(2024, 12, 31))
+print(f'MSFT roce_5y={gate.median_5y*100:.1f}% strong={gate.strong_track_record} pe_ttm={val.pe_ttm:.1f}x')
+# 实测: MSFT roce_5y=29.7% strong=True pe_ttm=35.2x
 "
 
-# 2. 全量回填（带 truncate）
+# 2. 全量回填（5 模块）
 mysql -h 127.0.0.1 -uroot -pdarwen_dev_123 darwen -e "TRUNCATE TABLE metric_periodic; TRUNCATE TABLE metric_lineage_log;"
 /opt/miniconda3/envs/darwen/bin/python -m backend.metrics.compute
-# 实测: 598/598 OK, year_rows=31423, section_rows=1988, lineage_rows=32161, pass_5y_count=153, strong_count=129
+# 实测: 598/598 OK, year_rows=65887, section_rows=6793, lineage_rows=86811,
+#       pass_5y_count=172, strong_count=146, 12 分钟
 
-# 3. SEC 字段增量回填（需要时）
+# 3. SEC 字段增量回填（CORE_CONCEPTS 变更后）
 /opt/miniconda3/envs/darwen/bin/python -m backend.pipeline.sec_edgar.backfill_tags
 # 实测: 548 美股、546 OK、2 errors，~4 分钟
 
@@ -136,7 +148,25 @@ mysql -h 127.0.0.1 -uroot -pdarwen_dev_123 darwen -e "TRUNCATE TABLE metric_peri
 mysql -h 127.0.0.1 -uroot -pdarwen_dev_123 darwen -e "
 SELECT notes, COUNT(*) FROM metric_periodic WHERE metric_name='q3_pass_5y' GROUP BY notes ORDER BY 2 DESC;
 "
-# 实测: Q5_RECENT_NEG_CAP=177, Q3_FAIL_MEDIAN=107, Q1=43, Q3_FAIL_COUNT=17, NULL(=pass)=153
+
+# 5. 各 formula_version 行数分布
+mysql -h 127.0.0.1 -uroot -pdarwen_dev_123 darwen -e "
+SELECT formula_version, COUNT(DISTINCT metric_name) n_metrics, COUNT(*) cnt
+FROM metric_periodic GROUP BY formula_version;
+"
+# 实测: roce_v1 (11 metrics, 33,699) leverage_v1 (4, 20,144) cash_quality_v1 (6, 12,530)
+#       dilution_v1 (2, 3,979) valuation_v1 (4, 2,328)
+
+# 6. V2 strict 模式候选（PE ≤ 14.9 + Q3 通过）
+mysql -h 127.0.0.1 -uroot -pdarwen_dev_123 darwen -e "
+SELECT c.market, c.name, ROUND(pe.value,1) pe, ROUND(m5.value*100,1) roce_5y
+FROM metric_periodic pe
+JOIN metric_periodic m5 ON pe.company_id=m5.company_id AND m5.metric_name='roce_5y_median'
+JOIN metric_periodic q3 ON pe.company_id=q3.company_id AND q3.metric_name='q3_pass_5y' AND q3.value=1
+JOIN company c ON pe.company_id=c.company_id
+WHERE pe.metric_name='pe_ttm' AND pe.value BETWEEN 3 AND 14.9 AND m5.value > 0.20
+ORDER BY pe.value LIMIT 15;
+"
 ```
 
 ---

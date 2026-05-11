@@ -5,7 +5,7 @@
 
 ---
 
-## 项目状态：V2 M2 ROCE 落地完成，待续 M2.3+
+## 项目状态：V2 M2 全部完成，待启动 M3 三层漏斗筛选
 
 ---
 
@@ -15,18 +15,19 @@
 |---|---|---|---|
 | M1   | 数据基础（schema 重构、Tushare Pro 接入、10 家 A 股蓝筹回填） | ✅ | 6 张 V2 表 + Tushare 字段 canonical 化 |
 | M1.x | SEC 字段修补（CORE_CONCEPTS 扩 7 tag、546 美股重拉） | ✅ | STI / LongTermDebtCurrent / OperatingLease 等入库 |
-| M2.1 | 字段映射 & helpers | ✅ | field_map（24 canonical 三向映射）+ helpers（4 API） |
+| M2.1 | 字段映射 & helpers | ✅ | field_map（24 canonical 三向映射）+ helpers（三轨可见性 + annual_only + 财年末启发式） |
 | M2.2 | ROCE 严格口径 + 5Y/10Y 门槛 | ✅ | roce.py + QualityGate（含 Q5_RECENT_NEG_CAP 修正） |
-| M2.5 | ROCE 落库调度 + 全量回填 | ✅ (ROCE 部分) | 598 家 OK / 31,423 年度行 / 32,161 血缘 / 25.6% 通过 |
-| M2.3 | 杠杆 / 现金质量 | ⏳ | leverage.py + cash_quality.py |
-| M2.4 | 稀释 / 估值 | ⏳ | dilution.py + valuation.py |
+| M2.3 | 杠杆 + 现金质量 | ✅ | leverage.py + cash_quality.py（R1/R2 输入） |
+| M2.4 | 稀释 + 估值 | ✅ | dilution.py（CAGR + 拆股检测）+ valuation.py（mc/PE/EV）|
+| M2.5 | 调度器整合 + 全量回填 | ✅ | persist_all_metrics_for_company / 598 家 / 5 模块 18 metric / 12 分钟 |
 | M3   | 三层漏斗（Q / R / V Layer） | ⏳ | screening 模块 + reason_codes + 5 状态 |
 | M4   | AI 风险层（ChatGPT + MiniMax + Fernet） | ⏳ | ai 模块 |
 | M5   | API 层重写（V2 endpoints + Key 绑定） | ⏳ | screening/backtest/user_settings router |
 | M6   | 前端 6 页面重构 | ⏳ | UniverseConfig / ScreenConfig / Results / AccountSettings 等 |
 | M7   | 月度再平衡回测 + 端到端 smoke | ⏳ | backtest/v2_engine.py + E1/E2/E6 实验 |
-| M1.9 | SEC filing 文本与元数据 | ⏳ (可与 M2.x 并行) | filings_text.py |
-| M1.10| Polygon News 接入 | ⏳ (可与 M2.x 并行) | news/polygon_news.py |
+| M1.9 | SEC filing 文本与元数据 | ⏳ (可与 M3 并行) | filings_text.py |
+| M1.10| Polygon News 接入 | ⏳ (可与 M3 并行) | news/polygon_news.py |
+| 数据修补 | A 股不复权 close / 金融股 shares / TSLA 财年 | ⏳ 后续 | M3 启动前可单独排程 |
 
 ---
 
@@ -38,18 +39,28 @@
 | fact (TS-FS) | 13,874 | A 股新数据 10 家蓝筹 |
 | fact (AKSHARE) | 26,629 | A 股旧数据 50 家（M2 fallback） |
 | company | 598 | 548 美股 + 50 A 股 |
-| metric_periodic | 33,411 | ROCE 相关年度 + 截面指标 |
-| metric_lineage_log | 32,161 | 每输入字段一行血缘记录 |
-| market_bar | 474,808 | 2008-2026 美股日线（V1 遗留，V2 待延伸） |
+| metric_periodic | 72,680 | 5 个模块 18 个 distinct metric_name，formula_version 区分 |
+| metric_lineage_log | 86,811 | 每输入字段一行血缘记录 |
+| market_bar | 1,784,230 | 2008-2026，美股 742 + A 股 50（A 股为复权价待修复） |
+
+### metric_periodic 按 formula_version 分布
+
+| formula_version | distinct metrics | total rows |
+|---|---:|---:|
+| roce_v1 | 11 | 33,699 |
+| leverage_v1 | 4 | 20,144 |
+| cash_quality_v1 | 6 | 12,530 |
+| dilution_v1 | 2 | 3,979 |
+| valuation_v1 | 4 | 2,328 |
 
 ---
 
-## ROCE 全量回填验收结果（M2.5 ROCE 部分）
+## M2 全量回填验收结果（598 家 × 18 metric）
 
-### 通过率
+### 通过率（更新自 M2.4 财年末推断改进）
 
-- 通过 5Y 门槛 (Q3 PASS)：153 / 598 = **25.6%**
-- 强通过 (10Y 强 track record)：129 / 598 = **21.6%**
+- 通过 5Y 门槛 (Q3 PASS)：172 / 598 = **28.8%**（M2.4 财年末推断改进后 +19 家）
+- 强通过 (10Y 强 track record)：146 / 598 = **24.4%**（+17 家）
 - 与 Pulak 书"严苛筛选"预期吻合
 
 ### fail_reason 分布
@@ -64,20 +75,20 @@
 
 ### 算法抽样验证
 
-| 公司 | 5Y 中位数 | 状态 | 备注 |
-|---|---:|---|---|
-| Microsoft | 29.7% | ✓ pass + strong | |
-| Nvidia | 39.7% | ✓ pass + strong | |
-| Medtronic | 52% | ✓ pass | |
-| 茅台 | 66.9% | ✓ pass | |
-| 美的集团 | 91.8% | ✓ pass + strong | |
-| 泸州老窖 | 105.7% | ✓ pass + strong | |
-| Cisco | 22% | ✓ pass (修补前 213% 失真) | |
-| Apple | Q5_RECENT_NEG_CAP | 覆核 (修补前 230% 假阳) | |
-| Visa | Q5_RECENT_NEG_CAP | 覆核 (修补前 622% 假阳) | |
-| 京东方 | 5.2% | Q3_FAIL_MEDIAN | 重资本面板厂 |
-| 格力 | NEGATIVE_CAP_EMP | Q5 覆核 | 结构性负 NWC |
-| 广发证券 | n/a | Q0 排除 | 券商资产结构 |
+| 公司 | 5Y 中位数 | PE_TTM | mc | 状态 | 备注 |
+|---|---:|---:|---:|---|---|
+| Microsoft | 29.7% | 35.2x | 3103B | ✓ pass + strong | mc / PE 与公开数据吻合 |
+| Apple | Q5_RECENT_NEG_CAP | 40.2x | 3765B | 覆核 | ROCE 不可比但 mc/PE 正确 |
+| Nvidia | 39.7% | — | — | ✓ pass + strong | |
+| Medtronic | 52% | — | — | ✓ pass | |
+| 美的集团 | 91.8% | 13.8x | 616B | ✓ pass + strong | mc/PE 与公开数据吻合 |
+| 茅台 | 66.9% | 143x ❌ | 11134B ❌ | ✓ pass | mc/PE 因 V1 复权价失真，roce 正确 |
+| 泸州老窖 | 105.7% | — | — | ✓ pass + strong | |
+| Cisco | 22% | — | — | ✓ pass | 修补前 213% 失真 |
+| Visa | Q5_RECENT_NEG_CAP | — | — | 覆核 | 修补前 622% 假阳 |
+| 京东方 | 5.2% | — | — | Q3_FAIL_MEDIAN | 重资本面板厂 |
+| 格力 | NEGATIVE_CAP_EMP | — | — | Q5 覆核 | 结构性负 NWC |
+| 广发证券 | n/a | — | — | Q0 排除 | 券商资产结构 |
 
 ---
 
@@ -96,7 +107,14 @@
 | 2026-05-11 | ROCE 缺失字段降级标签 | EXCESS_CASH_PROXY_LOW_CONFIDENCE / NEGATIVE_OR_ZERO_CAPITAL_EMPLOYED / EBIT_FROM_OP_INC_PLUS_INTEREST 等 |
 | 2026-05-11 | Quality Gate 窗口取"最近 5 完整财年"含 invalid | 避免 Apple/Visa 等用早期 valid 年补窗口假阳通过 |
 | 2026-05-11 | SEC CORE_CONCEPTS 扩 7 tag | ShortTermInvestments / MarketableSecuritiesCurrent / LongTermDebtCurrent 等是 ROCE 公式必需 |
-| 2026-05-11 | formula_version 字段 | metric_periodic 唯一键含 formula_version，便于未来 ROCE 口径升级共存 |
+| 2026-05-11 | formula_version 字段 | metric_periodic 唯一键含 formula_version，便于未来口径升级共存 |
+| 2026-05-11 | 每模块独立 formula_version | roce_v1 / leverage_v1 / cash_quality_v1 / dilution_v1 / valuation_v1 — 各自单独升级 |
+| 2026-05-11 | FCF 优先 CFO-CapEx | Tushare fcf 字段口径未文档化（茅台 2019 异常），与 PRD R2 公式一致更稳定 |
+| 2026-05-11 | EBIT 跨模块共享 ebit_by_year | leverage 计算复用 ROCE 求出的 EBIT 避免重复求解 |
+| 2026-05-11 | get_fact_value_asof 三轨可见性 | accepted_date → available_date → period_end + 120 天 lag 兜底 AKSHARE 旧数据 |
+| 2026-05-11 | get_fiscal_year_end 用 NI 取年最大 | Revenues 月份众数对 MSFT/AAPL 等季报年报均匀分布失败，NI 全年 > 单季更可靠 |
+| 2026-05-11 | valuation as_of 默认 year_range 末年 12-31 | 反映"回测点时"语义，便于 M7 回测复用 |
+| 2026-05-11 | dilution 拆股检测 ratio ≥ 1.5x | Apple 2020 4:1 拆股标 POSSIBLE_STOCK_SPLIT_{year}，提示 CAGR 失真 |
 
 ---
 
