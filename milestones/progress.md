@@ -1,115 +1,113 @@
 # Darwen 项目进度总览
 
-> 最后更新：2026-03-25
-
-## 项目状态：Phase 2 P0 已完成，前端交互增强已完成
-
----
-
-## Phase 2 P0 完成情况
-
-| # | 任务 | 状态 | 关键成果 |
-|---|------|------|----------|
-| 1 | 补齐 9 个 stub 因子 | ✅ | R6/A5/A6/M3/M5/M6/V2/V4/V5 全部实现 |
-| 2 | 新增行情类因子 | ✅ | 12-1 动量(V3)、年化波动率(S3)、20日ADV(V6) |
-| 3 | 统一 Revenue 取值 | ✅ | get_revenue/get_revenue_series 兼容多种 concept |
-| 4 | 补充 SEC 数据 | ✅ | AssetsCurrent/LiabilitiesCurrent, S2 覆盖提升 |
-| 5 | 回测异常值裁剪 | ✅ | >500% / <-90% 排除 |
-| 6 | 回测验证 | ✅ | Top 21.4% avg, 92% win rate |
+> 最后更新：2026-05-11
+> 项目方向：V2 三层漏斗股票筛选系统（基于 Pulak Prasad《What I Learned About Investing from Darwin》）
 
 ---
 
-## 数据资产
-
-| 数据类型 | 数量 | 来源 | 覆盖范围 |
-|----------|------|------|----------|
-| 公司 | 133 家 | SEC EDGAR + akshare | 83 美股 + 50 A股 |
-| 财务事实 | ~100,000+ 条 | XBRL + 同花顺报表 | 2008-2024 年报/季报 |
-| 行情数据 | 474,808 条 | yfinance | 2008-2026 美股日线 |
-| 因子值 | 133×30 = 3,990 条 | 计算引擎 | 2024-12-31 截面 |
-| 因子覆盖率 | 81.5% | 30 因子全覆盖 | 0 个 stub |
-| 评分快照 | 133 条 | 评分引擎 | balanced 模型 |
+## 项目状态：V2 M2 ROCE 落地完成，待续 M2.3+
 
 ---
 
-## 回测验证结果对比
+## V2 里程碑进度
 
-### MVP vs Phase 2（2012-2024，83 只美股）
-
-| 指标 | MVP | Phase 2 | 变化 |
-|------|-----|---------|------|
-| **因子覆盖率** | ~70% | 81.5% | +11.5% |
-| **Stub 因子** | 9 个 | 0 个 | -9 |
-| **Top 平均年收益** | 18.1% | **21.4%** | +3.3% |
-| **Top 中位数年收益** | 17.8% | **27.0%** | +9.2% |
-| **Top Win Rate** | 83% | **92%** | +9% |
-| **Top 跑赢 Reject 年数** | 6/12 (50%) | 5/12 (42%) | -8% |
-
-### Phase 2 分层统计
-
-| 指标 | Top (前20%) | Watch (20-60%) | Reject (后40%) |
-|------|-------------|----------------|----------------|
-| 平均年收益 | **21.4%** | 18.0% | 24.1% |
-| 中位数年收益 | **27.0%** | 17.4% | 26.9% |
-| 最佳单年 | 37.3% | 52.4% | 47.7% |
-| 最差单年 | -27.5% | -16.8% | -15.5% |
-| Win Rate | **92%** | 92% | 92% |
-
-### 关键结论
-
-1. **Top 层绝对收益显著改善**：均值 +3.3%，中位数 +9.2%
-2. **Top > Watch 排序正确**且稳定
-3. **Top 层 Win Rate 提升至 92%**（从 83%）
-4. **Reject 区分度仍不足**：需扩大样本量 + 行业中性化
-5. 当前 Top 中位数 27% 已具有实用参考价值
+| # | 里程碑 | 状态 | 关键交付 |
+|---|---|---|---|
+| M1   | 数据基础（schema 重构、Tushare Pro 接入、10 家 A 股蓝筹回填） | ✅ | 6 张 V2 表 + Tushare 字段 canonical 化 |
+| M1.x | SEC 字段修补（CORE_CONCEPTS 扩 7 tag、546 美股重拉） | ✅ | STI / LongTermDebtCurrent / OperatingLease 等入库 |
+| M2.1 | 字段映射 & helpers | ✅ | field_map（24 canonical 三向映射）+ helpers（4 API） |
+| M2.2 | ROCE 严格口径 + 5Y/10Y 门槛 | ✅ | roce.py + QualityGate（含 Q5_RECENT_NEG_CAP 修正） |
+| M2.5 | ROCE 落库调度 + 全量回填 | ✅ (ROCE 部分) | 598 家 OK / 31,423 年度行 / 32,161 血缘 / 25.6% 通过 |
+| M2.3 | 杠杆 / 现金质量 | ⏳ | leverage.py + cash_quality.py |
+| M2.4 | 稀释 / 估值 | ⏳ | dilution.py + valuation.py |
+| M3   | 三层漏斗（Q / R / V Layer） | ⏳ | screening 模块 + reason_codes + 5 状态 |
+| M4   | AI 风险层（ChatGPT + MiniMax + Fernet） | ⏳ | ai 模块 |
+| M5   | API 层重写（V2 endpoints + Key 绑定） | ⏳ | screening/backtest/user_settings router |
+| M6   | 前端 6 页面重构 | ⏳ | UniverseConfig / ScreenConfig / Results / AccountSettings 等 |
+| M7   | 月度再平衡回测 + 端到端 smoke | ⏳ | backtest/v2_engine.py + E1/E2/E6 实验 |
+| M1.9 | SEC filing 文本与元数据 | ⏳ (可与 M2.x 并行) | filings_text.py |
+| M1.10| Polygon News 接入 | ⏳ (可与 M2.x 并行) | news/polygon_news.py |
 
 ---
 
-## 当前 Top 21 公司（2024-12-31, balanced 模型）
+## 数据资产（截至 2026-05-11）
 
-| 排名 | 公司 | 市场 | 总分 | 生存 | 复制 | 适应 | 优势 | 估值 |
-|------|------|------|------|------|------|------|------|------|
-| 1 | Meta Platforms | US | 69.1 | 36 | 75 | 81 | 96 | 61 |
-| 2 | Microsoft | US | 66.8 | 66 | 69 | 80 | 71 | 45 |
-| 3 | Salesforce | US | 63.6 | 72 | 65 | 86 | 63 | 25 |
-| 4 | 泸州老窖 | CN | 63.2 | 57 | 61 | 60 | 75 | 58 |
-| 5 | Netflix | US | 63.1 | 65 | 55 | 72 | 73 | 45 |
-| 6 | Autodesk | US | 62.7 | 56 | 59 | 80 | 80 | 33 |
-| 7 | Zoetis | US | 62.2 | 59 | 58 | 84 | 70 | 37 |
-| 8 | Texas Instruments | US | 61.2 | 60 | 72 | 75 | 67 | 26 |
-| 9 | Apple | US | 59.8 | 56 | 52 | 73 | 62 | 59 |
-| 10 | Intuitive Surgical | US | 59.1 | 68 | 55 | 80 | 61 | 25 |
-| 11 | 农业银行 | CN | 58.8 | 63 | 56 | 81 | 43 | 60 |
+| 表 | 行数 | 说明 |
+|----|---:|------|
+| fact (SEC) | 1,074,000+ | 含新增 7 个 tag 重拉数据 |
+| fact (TS-FS) | 13,874 | A 股新数据 10 家蓝筹 |
+| fact (AKSHARE) | 26,629 | A 股旧数据 50 家（M2 fallback） |
+| company | 598 | 548 美股 + 50 A 股 |
+| metric_periodic | 33,411 | ROCE 相关年度 + 截面指标 |
+| metric_lineage_log | 32,161 | 每输入字段一行血缘记录 |
+| market_bar | 474,808 | 2008-2026 美股日线（V1 遗留，V2 待延伸） |
 
 ---
 
-## 重大技术决策记录
+## ROCE 全量回填验收结果（M2.5 ROCE 部分）
+
+### 通过率
+
+- 通过 5Y 门槛 (Q3 PASS)：153 / 598 = **25.6%**
+- 强通过 (10Y 强 track record)：129 / 598 = **21.6%**
+- 与 Pulak 书"严苛筛选"预期吻合
+
+### fail_reason 分布
+
+| reason | count | 含义 |
+|---|---:|---|
+| 通过 (NULL) | 153 | Q3 通过 |
+| Q5_RECENT_NEG_CAP_OR_MISSING | 177 | 近 5 年 ≥ 2 年负营运资本 / 字段缺，走 P1 人工覆核（Apple/Visa 等大现金公司） |
+| Q3_FAIL_MEDIAN | 107 | 5Y ROCE 中位数 < 20% |
+| Q1_INSUFFICIENT_HISTORY | 43 | 财年不足 5 年 |
+| Q3_FAIL_COUNT | 17 | 中位数过线但 ≥ 20% 年数 < 4 |
+
+### 算法抽样验证
+
+| 公司 | 5Y 中位数 | 状态 | 备注 |
+|---|---:|---|---|
+| Microsoft | 29.7% | ✓ pass + strong | |
+| Nvidia | 39.7% | ✓ pass + strong | |
+| Medtronic | 52% | ✓ pass | |
+| 茅台 | 66.9% | ✓ pass | |
+| 美的集团 | 91.8% | ✓ pass + strong | |
+| 泸州老窖 | 105.7% | ✓ pass + strong | |
+| Cisco | 22% | ✓ pass (修补前 213% 失真) | |
+| Apple | Q5_RECENT_NEG_CAP | 覆核 (修补前 230% 假阳) | |
+| Visa | Q5_RECENT_NEG_CAP | 覆核 (修补前 622% 假阳) | |
+| 京东方 | 5.2% | Q3_FAIL_MEDIAN | 重资本面板厂 |
+| 格力 | NEGATIVE_CAP_EMP | Q5 覆核 | 结构性负 NWC |
+| 广发证券 | n/a | Q0 排除 | 券商资产结构 |
+
+---
+
+## 关键技术决策（V2 时期）
 
 | 日期 | 决策 | 理由 |
 |------|------|------|
-| 2026-03-24 | SEC EDGAR 改为同步 httpx | 异步 httpx 在本机代理环境下卡死 |
-| 2026-03-24 | companyfacts 批量写入 + 去重 | 逐条写入远程 MySQL 太慢 |
-| 2026-03-25 | 评分引擎排除 stub 因子 | 9 个 null 因子以 50 分参与拉平了总分 |
-| 2026-03-25 | 固定阈值改为动态分位数分层 | P80/P40 更适应不同样本量 |
-| 2026-03-25 | stub 因子用财务数据代理实现 | 无 LLM/外部数据时的最佳近似方案 |
-| 2026-03-25 | Revenue 取值统一为 get_revenue() | SEC 用 Revenues/RevenueFromContract, A股用 revenue |
-| 2026-03-25 | 回测裁剪 >500% 异常值 | 单只低价股 9256% 收益扭曲 Reject 层统计 |
-| 2026-03-25 | 补充 AssetsCurrent/LiabilitiesCurrent | SEC XBRL 标签名与预期不同导致 S2 全市场缺失 |
-| 2026-03-25 | 前端 lineage 改为中文标签 | Python dict 原始字符串用户无法阅读 |
-| 2026-03-25 | 红线原因前端展示 | 用户困惑"高分为何 Reject"，增加红色警告标签 |
+| 2026-05-09 | V0/V1 评分体系完全替换 | drop score_snapshot/factor_value 表 + 删 scoring/factors/backtest 目录 |
+| 2026-05-09 | A 股数据源切换 Tushare Pro | 用户已升级付费套餐，财报 + 披露日期 + daily_basic 全有 |
+| 2026-05-09 | 旧 30 因子加权评分弃用 | PRD V2 改为五状态 + reason_codes，不输出综合总分 |
+| 2026-05-09 | AI Key 用户表加密存储 | Fernet + DARWEN_FERNET_KEY，每用户独立计费 |
+| 2026-05-09 | ChatGPT 5 + MiniMax 2.7 双 provider | M4 实现 |
+| 2026-05-11 | fact.account_code 退化兼容 | M1 重构时退化为字面 taxonomy 名，helpers 改用 concept 查实际 tag |
+| 2026-05-11 | helpers 跨 source 自动回退 | A 股 TS-FS → AKSHARE，US 仅 SEC |
+| 2026-05-11 | 严格年报模式 | annual_only=True + fiscal_year_end_month 精确匹配，避免季报混入 |
+| 2026-05-11 | ROCE 缺失字段降级标签 | EXCESS_CASH_PROXY_LOW_CONFIDENCE / NEGATIVE_OR_ZERO_CAPITAL_EMPLOYED / EBIT_FROM_OP_INC_PLUS_INTEREST 等 |
+| 2026-05-11 | Quality Gate 窗口取"最近 5 完整财年"含 invalid | 避免 Apple/Visa 等用早期 valid 年补窗口假阳通过 |
+| 2026-05-11 | SEC CORE_CONCEPTS 扩 7 tag | ShortTermInvestments / MarketableSecuritiesCurrent / LongTermDebtCurrent 等是 ROCE 公式必需 |
+| 2026-05-11 | formula_version 字段 | metric_periodic 唯一键含 formula_version，便于未来 ROCE 口径升级共存 |
 
 ---
 
-## 前端交互增强（2026-03-25）
+## 主要参考文档
 
-| 功能 | 说明 |
-|------|------|
-| ⓘ 维度说明弹窗 | 每个维度旁 info 图标，点击弹窗展示说明 + 因子列表 + 权重可视化 |
-| 维度展开因子明细 | 点击维度行展开，查看 6 个子因子的代码、名称、原始值、归一化分 |
-| 红线警告标签 | Reject 公司总分旁显示红色标签（如"⚠ 股权稀释 > 30%"） |
-| 计算指标可读化 | 因子明细表数据溯源列从 Python dict 改为中文标签（如 FCF利润率: 21.7%） |
-| 因子名称 + 说明列 | 因子明细表新增"名称"和"说明"列，30 个因子均有中文描述 |
+- `prd/v2.0/Darwen_V2_PRD_Master.md` — V2 PRD（权威）
+- `milestones/v2-plan.md` — M2-M7 完整实施规划
+- `.agent/workflows/v2-implementation-roadmap.md` — Agent 执行 SOP
+- `milestones/2026-05-09.md` — M1 完成记录
+- `milestones/2026-05-11.md` — M2 ROCE 落地记录
 
 ---
 
-*本文件由 Agent 自动维护，反映项目最新状态。*
+*本文件由 Agent 维护，反映项目最新状态。*

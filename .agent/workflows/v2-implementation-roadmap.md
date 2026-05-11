@@ -2,7 +2,7 @@
 
 本文档定义 Darwen V2 重构剩余里程碑（M2-M7）的执行顺序、关键依赖与验收标准。
 
-**当前状态**：M1 数据基础已完成（`milestones/2026-05-09.md`），M2-M7 待实施。
+**当前状态**：M1 数据基础已完成（`milestones/2026-05-09.md`）。M2.1 字段映射 + M2.2 ROCE 计算 + M2.5 ROCE 部分回填 + SEC 字段修补 已完成（`milestones/2026-05-11.md`）。M2.3/M2.4 (杠杆/现金质量/稀释/估值) + M3-M7 待实施。
 
 ---
 
@@ -10,8 +10,14 @@
 
 ```
 M1 数据基础 ✅
+M1.x SEC 字段修补 ✅ (CORE_CONCEPTS 扩 7 个 tag，548 美股增量重拉)
     ↓
 M2 指标预计算（ROCE/CFO_NI/NetDebt等） ← 关键路径
+   M2.1 字段映射 & helpers ✅
+   M2.2 ROCE 严格口径 + 5Y/10Y 门槛 ✅
+   M2.3 杠杆 / 现金质量      ← TODO
+   M2.4 稀释 / 估值           ← TODO
+   M2.5 调度器 + 全量回填     ROCE 部分 ✅；M2.3/M2.4 待补
     ↓
 M3 三层漏斗引擎（Q/R/V Layer） ← 关键路径
     ↓
@@ -36,19 +42,44 @@ M1.10 Polygon News 接入
 
 实现 ROCE 严格公式 + 风险/价格层依赖的所有指标，预计算落库到 `metric_periodic`。
 
-### 文件结构
+### 文件结构（实际落地）
 
 ```
 backend/metrics/
-├── __init__.py
-├── compute.py          # 调度入口：compute_all_metrics(company_id, period_end)
-├── helpers.py          # 复用 fact 表查询 + 多概念 fallback
-├── roce.py             # ROCE 严格公式 + 5Y/10Y 序列
-├── leverage.py         # interest_coverage, net_debt/EBIT, current_ratio
-├── cash_quality.py     # CFO/NI, FCF, FCF<0 的年数
-├── dilution.py         # share_count_cagr_5y
-└── valuation.py        # pe_ttm（用 market_bar.close × shares × net_income TTM）
+├── __init__.py        ✅
+├── field_map.py       ✅ 24 canonical → SEC us-gaap / TS-FS / AKSHARE 三向映射 + source 优先级链
+├── helpers.py         ✅ get_fact_value / get_fact_value_asof / get_annual_periods / get_fiscal_year_end
+├── roce.py            ✅ RoceComponents + compute_roce_series + evaluate_quality_gate (PRD 第 4 节)
+├── compute.py         ✅ ROCE 调度 + INSERT ON DUPLICATE KEY UPDATE + 血缘日志
+├── leverage.py        ⏳ net_debt / interest_coverage / current_ratio
+├── cash_quality.py    ⏳ CFO/NI / FCF / FCF<0 年数
+├── dilution.py        ⏳ share_count_cagr_5y
+└── valuation.py       ⏳ pe_ttm / ev_ebit（依赖 market_bar 最新收盘）
 ```
+
+### M2.1/M2.2 已落地的关键决策
+
+1. **fact.account_code 字段含义**：M1 重构时退化为字面 "us-gaap" / "cn-cas"，真实 tag 在 `concept` 字段。helpers 已按 source_type + concept 候选回退查询。
+2. **跨 source 回退**：A 股 helpers 优先 TS-FS（10 家有数据），其余 40 家自动回退 AKSHARE。helpers 透传 source_type 给血缘日志。
+3. **严格年报模式**：`get_annual_periods(annual_only=True)` 仅取 period_end.month == fiscal_year_end_month 的 fact，避免 Q1/Q3 季报混入年度序列。A 股一律 fy_end_month=12，美股按 Revenues period_end 月份众数推断。
+4. **降级标签**：
+   - `EXCESS_CASH_PROXY_LOW_CONFIDENCE` — short_term_investments 缺失置 0
+   - `NEGATIVE_OR_ZERO_CAPITAL_EMPLOYED` — capital_employed ≤ 0，roce=None，不自动排除
+   - `EBIT_FROM_OP_INC_PLUS_INTEREST` / `EBIT_FROM_TOTAL_PROFIT_PLUS_INTEREST` — A 股 EBIT 回退路径
+   - `EBIT_INTEREST_EXPENSE_MISSING_ZEROED` — A 股利息费用缺失
+5. **质量门槛窗口**：取**最近 5 个完整财年**（含 invalid），近 5 年内 ≥ 2 年 NEGATIVE_CAP 走 Q5_RECENT_NEG_CAP_OR_MISSING 人工覆核，避免大现金/负 NWC 公司（Apple/Visa）用早期 valid 年补窗口。
+6. **fact_id 与血缘**：RoceComponents.source_fact_ids 收集每个输入字段的 fact_id；compute.py 写血缘时批量查 fact → (source_type, raw_value, accepted_date)，每输入字段一行 metric_lineage_log。
+
+### SEC 字段修补结果
+
+CORE_CONCEPTS 新增 7 个 tag：
+- ShortTermInvestments / MarketableSecuritiesCurrent — STI 主源 / Apple 类公司用 Marketable
+- LongTermDebtCurrent — 一年内到期长债
+- LongTermDebtNoncurrent — 非流动长期借款
+- OperatingLeaseLiabilityCurrent / FinanceLeaseLiabilityCurrent — 一年内租赁负债
+- CommercialPaper — 商业票据，Apple 类公司的"短期借款"
+
+重拉 546 美股，新增约 2.3 万条 fact。Cisco ROCE 213% → 22%；Apple/Visa 由原"假阳通过"→ Q5 正确捕获。
 
 ### 接口约定
 
@@ -78,27 +109,34 @@ def compute_all_metrics(db: Session, company_id: str, asof_date: date) -> list[M
 - 取 `period_end` 在 `[asof_date - 5y, asof_date]` 内的财年（必须满足 `accepted_date <= asof_date`，点时严格）
 - 输出：`{2020: 0.275, 2021: 0.288, ..., 2024: 0.291}`
 
-### 验收标准
+### 验收命令（实测）
 
 ```bash
-# 1. ROCE 单股验证
-python -c "
+# 1. ROCE 单股验证（开发期）
+/opt/miniconda3/envs/darwen/bin/python -c "
 from backend.database import SessionLocal
-from backend.metrics.roce import compute_roce_series
-from datetime import date
+from backend.metrics.roce import compute_roce_series, evaluate_quality_gate
 db = SessionLocal()
-series = compute_roce_series(db, 'CN_600519', date(2024, 12, 31), years=5)
-print(series)
-# 预期: 茅台 5Y ROCE 应 >= 30% 中位数
+series = compute_roce_series(db, 'CN_600519', (2018, 2024))
+gate = evaluate_quality_gate(series)
+print(f'茅台 5Y median={gate.median_5y*100:.1f}% pass={gate.pass_5y_gate}')
+# 实测: 5Y median=66.9% pass=True
 "
 
-# 2. 全量回填
-python -m backend.metrics.compute --all --asof 2024-12-31
-# 预期: 548 + 10 公司各 7-8 个指标，约 4000+ 行写入 metric_periodic
+# 2. 全量回填（带 truncate）
+mysql -h 127.0.0.1 -uroot -pdarwen_dev_123 darwen -e "TRUNCATE TABLE metric_periodic; TRUNCATE TABLE metric_lineage_log;"
+/opt/miniconda3/envs/darwen/bin/python -m backend.metrics.compute
+# 实测: 598/598 OK, year_rows=31423, section_rows=1988, lineage_rows=32161, pass_5y_count=153, strong_count=129
 
-# 3. 血缘日志
-mysql -e "SELECT COUNT(*) FROM metric_lineage_log;"
-# 预期: > 30,000 行（每个 metric 5+ source_fact_ids）
+# 3. SEC 字段增量回填（需要时）
+/opt/miniconda3/envs/darwen/bin/python -m backend.pipeline.sec_edgar.backfill_tags
+# 实测: 548 美股、546 OK、2 errors，~4 分钟
+
+# 4. fail_reason 分布巡检
+mysql -h 127.0.0.1 -uroot -pdarwen_dev_123 darwen -e "
+SELECT notes, COUNT(*) FROM metric_periodic WHERE metric_name='q3_pass_5y' GROUP BY notes ORDER BY 2 DESC;
+"
+# 实测: Q5_RECENT_NEG_CAP=177, Q3_FAIL_MEDIAN=107, Q1=43, Q3_FAIL_COUNT=17, NULL(=pass)=153
 ```
 
 ---
