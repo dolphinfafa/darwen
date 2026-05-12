@@ -142,6 +142,9 @@ def ingest_news_for_company(
         url = item.get("article_url") or ""
         if not url:
             continue
+        # content_url 字段限 500 字符，超长 URL 去 query string 后保留
+        if len(url) > 500:
+            url = url.split("?", 1)[0][:500]
         if url in existing_urls:
             skipped += 1
             continue

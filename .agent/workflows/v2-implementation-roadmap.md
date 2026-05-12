@@ -2,7 +2,15 @@
 
 本文档定义 Darwen V2 重构剩余里程碑（M2-M7）的执行顺序、关键依赖与验收标准。
 
-**当前状态**：V2 主线 M1-M7 全部完成（`milestones/2026-05-12.md`）。系统端到端可用：UI 流程 → 后端 API → 漏斗筛选 → AI 风险层 → Bucket Spread 回测。M7 v2 月度滚动回测、M1.9 SEC filing 文本、M1.10 Polygon News、数据修补归后续迭代。
+**当前状态**：V2 完整工程闭环（M1-M7 + M1.9 + M1.10 + M7 v2 + 548 美股全量回填）。
+
+`milestones/2026-05-12.md` 含 12 章工作记录。系统端到端可用：
+
+- UI → API → 漏斗筛选 → AI 风险层 → Bucket Spread + 月度滚动回测
+- 96% 美股具备 AI 证据（485 家 SEC 8-K/10-K/10-Q + 500 家 Polygon News）
+- PRD E2 单调性验证：ROCE 10%→30% CAGR 单调上升 26.7%→34.5%
+
+剩余后续：数据修补（A 股不复权 close / 金融股 shares / TSLA 财年）/ E6 点时偏差 / 月度回测前端可视化。
 
 ---
 
@@ -33,12 +41,21 @@ M6 前端重构（6 个新页面） ✅
     ↓
 M7 Bucket Spread 回测 + 端到端 ✅
    3 模块 + API / 端到端 6/6 / NearFairPrice 80% win rate 价值策略验证
+    ↓
+M7 v2 月度滚动回测 ✅
+   2020-2024 美股 standard：CAGR 28.9% / Sharpe 1.24 / MaxDD -24%
+   PRD E2 单调性：ROCE 10/15/20/25/30% CAGR 单调上升
+    ↓
+M1.9 SEC filing 文本 ✅
+   8,440 text_document + 108,761 filing accepted_at；485/548 美股有 SEC 证据
+    ↓
+M1.10 Polygon News ✅
+   14,632 新闻覆盖 500 家美股，含 publisher/tickers/keywords 元数据
 
 后续迭代：
-M7 v2 月度滚动回测（v2_engine.py，严格点时每月重算）
-M1.9 SEC filing 文本（AI 风险层需真实文档）
-M1.10 Polygon News
+M7 v3 E6 点时偏差 / 基准对比 / 行业中性化
 数据修补：A 股不复权 close / 金融股 shares 量级 / TSLA 财年末
+M4 AI 真实调用端到端（用户绑真实 key + 全量证据可用）
 ```
 
 ---

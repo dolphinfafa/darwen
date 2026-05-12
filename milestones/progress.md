@@ -5,7 +5,7 @@
 
 ---
 
-## 项目状态：V2 主线 M1-M7 全部完成，端到端可用
+## 项目状态：V2 完整工程闭环（M1-M7 + M1.9 + M1.10 + M7 v2 + 548 美股全量回填）
 
 ---
 
@@ -26,9 +26,10 @@
 | M6   | 前端 6 页面重构 | ✅ | UniverseConfig / ScreenConfig / ScreenRun / Results / CompanyDetailV2 / AccountSettings |
 | M7   | Bucket Spread 回测 + 端到端 smoke | ✅ | backtest 3 模块 + /v2/backtest/bucket-spread + E2E 6/6 |
 | M7 v2 | 月度滚动回测 + E2 单调性 | ✅ | v2_engine.py 月度再平衡 / 5 年 CAGR 28.9% / Sharpe 1.24 / E2 ROCE 单调性验证 |
+| M1.9 | SEC filing 文本与元数据 | ✅ | filings_text.py / 548 美股 8,440 text_document / 108,761 filing 元数据 |
+| M1.10| Polygon News 接入 | ✅ | polygon_news.py / 14,632 新闻覆盖 500 家美股 |
+| 全量回填 | 548 美股 SEC + Polygon News | ✅ | text_document 23,431 行 / 96% 美股有 AI 证据 |
 | M7 v3 | E6 点时偏差 / 基准对比 / 行业中性化 | ⏳ 后续 | — |
-| M1.9 | SEC filing 文本与元数据 | ⏳ 后续 | filings_text.py（AI 风险层需真实文档） |
-| M1.10| Polygon News 接入 | ⏳ 后续 | news/polygon_news.py |
 | 数据修补 | A 股不复权 close / 金融股 shares / TSLA 财年 | ⏳ 后续 | 影响估值数值精度 |
 
 ---
@@ -44,6 +45,8 @@
 | metric_periodic | 72,680 | 5 个模块 18 个 distinct metric_name，formula_version 区分 |
 | metric_lineage_log | 86,811 | 每输入字段一行血缘记录 |
 | market_bar | 1,784,230 | 2008-2026，美股 742 + A 股 50（A 股为复权价待修复） |
+| text_document | 23,431 | SEC 8-K 6,588 + 10-K 813 + 10-Q 1,398 + PG-NEWS 14,632 |
+| filing (accepted_at 完整) | 108,761 / 120,213 (90.5%) | M4 AI 风险层证据可点时追溯 |
 
 ### metric_periodic 按 formula_version 分布
 
@@ -162,6 +165,16 @@
 | **30%** | **34.50%** | **1.31** |
 
 **ROCE 阈值越严 → CAGR 单调递增**，Pulak 核心论点完整验证。
+
+## M4 AI 风险层证据覆盖率（548 美股）
+
+| 证据源 | 覆盖公司 | 占比 |
+|---|---:|---:|
+| SEC 法定披露（8-K/10-K/10-Q） | 485 | 88.5% |
+| Polygon News | 500 | 91.2% |
+| 至少一种证据 | 524+ | **96%** |
+
+PRD 第 6 节"证据优先级"层次完整：法定披露可触发 REJECT，新闻最高 REVIEW。
 
 ---
 
