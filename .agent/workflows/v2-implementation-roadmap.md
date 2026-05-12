@@ -2,7 +2,7 @@
 
 本文档定义 Darwen V2 重构剩余里程碑（M2-M7）的执行顺序、关键依赖与验收标准。
 
-**当前状态**：M1 数据基础已完成（`milestones/2026-05-09.md`）。M2 指标预计算 + SEC 字段修补 全部完成（`milestones/2026-05-11.md`）。M3-M7 待实施。
+**当前状态**：V2 主线 M1-M7 全部完成（`milestones/2026-05-12.md`）。系统端到端可用：UI 流程 → 后端 API → 漏斗筛选 → AI 风险层 → Bucket Spread 回测。M7 v2 月度滚动回测、M1.9 SEC filing 文本、M1.10 Polygon News、数据修补归后续迭代。
 
 ---
 
@@ -13,25 +13,31 @@ M1 数据基础 ✅
 M1.x SEC 字段修补 ✅ (CORE_CONCEPTS 扩 7 个 tag，548 美股增量重拉)
     ↓
 M2 指标预计算（5 模块全部完成）✅
-   M2.1 字段映射 & helpers (三轨可见性 + annual_only + 财年末启发式) ✅
+   M2.1 字段映射 & helpers ✅
    M2.2 ROCE 严格口径 + 5Y/10Y 门槛 ✅
    M2.3 杠杆 (R1) + 现金质量 (R2) ✅
    M2.4 稀释 (R3) + 估值 (V Layer) ✅
-   M2.5 调度器整合 + 全量回填 (598/598, 72,680 metric rows, 86,811 lineage) ✅
+   M2.5 调度器整合 + 全量回填 ✅
     ↓
-M3 三层漏斗引擎（Q/R/V Layer） ← 关键路径，下一目标
+M3 三层漏斗引擎（Q/R/V Layer + 5 状态裁决） ✅
+   8 模块 / 548 家 3.6s / strict-standard-loose 单调 / HighConviction 4 家
     ↓
-M4 AI 风险层（ChatGPT + MiniMax） ← 关键路径
+M4 AI 风险层（ChatGPT + MiniMax + Fernet 加密） ✅
+   9 文件 / 重试 1 次 / fallback 双 provider / PRD 融合规则 / 端到端 4 路径过
     ↓
-M5 API 层重写（V2 endpoints + Key 加密） ← 关键路径
+M5 API 层重写（V2 endpoints + Key 绑定） ✅
+   4 文件 / 10 endpoint / OpenAPI /docs 可见 / 端到端 8/8 过
     ↓
-M6 前端重构（6 个新页面）
+M6 前端重构（6 个新页面） ✅
+   删除 4 旧页面 / 新建 6 页 / vite 195ms 构建 / V2 路由
     ↓
-M7 回测 + 端到端验证
+M7 Bucket Spread 回测 + 端到端 ✅
+   3 模块 + API / 端到端 6/6 / NearFairPrice 80% win rate 价值策略验证
 
-非关键路径（可并行）：
-M1.9 SEC filing 文本增强
-M1.10 Polygon News 接入
+后续迭代：
+M7 v2 月度滚动回测（v2_engine.py，严格点时每月重算）
+M1.9 SEC filing 文本（AI 风险层需真实文档）
+M1.10 Polygon News
 数据修补：A 股不复权 close / 金融股 shares 量级 / TSLA 财年末
 ```
 

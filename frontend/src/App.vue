@@ -1,9 +1,8 @@
 <template>
   <nav v-if="!isLoginPage" class="nav">
-    <router-link to="/" class="nav-brand">Darwen</router-link>
-    <router-link to="/">筛选</router-link>
-    <router-link to="/report">报告</router-link>
-    <router-link to="/backtest">回测</router-link>
+    <router-link to="/" class="nav-brand">Darwen V2</router-link>
+    <router-link to="/universe">新建筛选</router-link>
+    <router-link to="/account">账户设置</router-link>
     <router-link v-if="currentUser?.is_admin" to="/admin">管理</router-link>
     <span class="nav-spacer"></span>
     <span v-if="currentUser" class="nav-user">

@@ -5,6 +5,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from backend.config import get_settings
 from backend.api.auth import router as auth_router
 from backend.api.admin import router as admin_router
+from backend.api.user_settings import router as user_settings_router
+from backend.api.screening import router as screening_router
+from backend.api.backtest import router as backtest_router
 
 settings = get_settings()
 
@@ -25,10 +28,9 @@ app.add_middleware(
 
 app.include_router(auth_router)
 app.include_router(admin_router)
-# V2 路由将在 M5 阶段注册：
-#   app.include_router(screening_router)
-#   app.include_router(backtest_router)
-#   app.include_router(user_settings_router)
+app.include_router(user_settings_router)
+app.include_router(screening_router)
+app.include_router(backtest_router)
 
 
 @app.on_event("startup")

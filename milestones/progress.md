@@ -1,11 +1,11 @@
 # Darwen 项目进度总览
 
-> 最后更新：2026-05-11
+> 最后更新：2026-05-12
 > 项目方向：V2 三层漏斗股票筛选系统（基于 Pulak Prasad《What I Learned About Investing from Darwin》）
 
 ---
 
-## 项目状态：V2 M2 全部完成，待启动 M3 三层漏斗筛选
+## 项目状态：V2 主线 M1-M7 全部完成，端到端可用
 
 ---
 
@@ -19,15 +19,16 @@
 | M2.2 | ROCE 严格口径 + 5Y/10Y 门槛 | ✅ | roce.py + QualityGate（含 Q5_RECENT_NEG_CAP 修正） |
 | M2.3 | 杠杆 + 现金质量 | ✅ | leverage.py + cash_quality.py（R1/R2 输入） |
 | M2.4 | 稀释 + 估值 | ✅ | dilution.py（CAGR + 拆股检测）+ valuation.py（mc/PE/EV）|
-| M2.5 | 调度器整合 + 全量回填 | ✅ | persist_all_metrics_for_company / 598 家 / 5 模块 18 metric / 12 分钟 |
-| M3   | 三层漏斗（Q / R / V Layer） | ⏳ | screening 模块 + reason_codes + 5 状态 |
-| M4   | AI 风险层（ChatGPT + MiniMax + Fernet） | ⏳ | ai 模块 |
-| M5   | API 层重写（V2 endpoints + Key 绑定） | ⏳ | screening/backtest/user_settings router |
-| M6   | 前端 6 页面重构 | ⏳ | UniverseConfig / ScreenConfig / Results / AccountSettings 等 |
-| M7   | 月度再平衡回测 + 端到端 smoke | ⏳ | backtest/v2_engine.py + E1/E2/E6 实验 |
-| M1.9 | SEC filing 文本与元数据 | ⏳ (可与 M3 并行) | filings_text.py |
-| M1.10| Polygon News 接入 | ⏳ (可与 M3 并行) | news/polygon_news.py |
-| 数据修补 | A 股不复权 close / 金融股 shares / TSLA 财年 | ⏳ 后续 | M3 启动前可单独排程 |
+| M2.5 | 调度器整合 + 全量回填 | ✅ | persist_all_metrics_for_company / 598 家 / 5 模块 27 distinct metric / 72,680 行 / 12 分钟 |
+| M3   | 三层漏斗（Q / R / V Layer） | ✅ | screening 模块 8 文件 + 5 状态裁决 / 548 家 3.6s 跑完 |
+| M4   | AI 风险层（ChatGPT + MiniMax + Fernet） | ✅ | ai 模块 9 文件 + 加密 + 重试 + fallback + PRD 融合规则 |
+| M5   | API 层重写（V2 endpoints + Key 绑定） | ✅ | 10 endpoint：3 user-settings + 6 screening + 1 backtest |
+| M6   | 前端 6 页面重构 | ✅ | UniverseConfig / ScreenConfig / ScreenRun / Results / CompanyDetailV2 / AccountSettings |
+| M7   | Bucket Spread 回测 + 端到端 smoke | ✅ | backtest 3 模块 + /v2/backtest/bucket-spread + E2E 6/6 |
+| M7 v2 | 月度滚动回测 + E2/E6 实验 | ⏳ 后续 | backtest/v2_engine.py（需每月严格点时重算） |
+| M1.9 | SEC filing 文本与元数据 | ⏳ 后续 | filings_text.py（AI 风险层需真实文档） |
+| M1.10| Polygon News 接入 | ⏳ 后续 | news/polygon_news.py |
+| 数据修补 | A 股不复权 close / 金融股 shares / TSLA 财年 | ⏳ 后续 | 影响估值数值精度 |
 
 ---
 
@@ -118,6 +119,30 @@
 
 ---
 
+## V2 主线 5 状态分桶（US standard, asof=2024-12-31）
+
+| 状态 | 数 | 占比 |
+|---|---:|---:|
+| HighConviction | 4 | 0.7% (Aptiv / EBAY / ON Semi / Elevance Health) |
+| NearFairPrice | 5 | 0.9% |
+| TooExpensive | 56 | 10.2% |
+| Review | 234 | 42.7% |
+| Rejected | 249 | 45.4% |
+
+## Bucket Spread 1.23Y 验证（2024-12-31 → 2026-03-27）
+
+| 状态 | n | mean | win_rate |
+|---|---:|---:|---:|
+| HighConviction | 4 | +5.8% | 50% |
+| **NearFairPrice** | **5** | **+29.4%** | **80%** ← Pulak 价值股策略验证 |
+| TooExpensive | 56 | +25.8% | 64% |
+| Review | 234 | +16.5% | 56% |
+| Rejected | 224 | +48.9% | 73% ← 2025-26 AI 牛市高 beta 暴涨 |
+
+短期 (1.23Y) 价值策略对 Rejected 牛市 beta 不利；需 3-5 年长期回测看完整效应。
+
+---
+
 ## 主要参考文档
 
 - `prd/v2.0/Darwen_V2_PRD_Master.md` — V2 PRD（权威）
@@ -125,6 +150,7 @@
 - `.agent/workflows/v2-implementation-roadmap.md` — Agent 执行 SOP
 - `milestones/2026-05-09.md` — M1 完成记录
 - `milestones/2026-05-11.md` — M2 ROCE 落地记录
+- `milestones/2026-05-12.md` — M3-M7 主线收官
 
 ---
 

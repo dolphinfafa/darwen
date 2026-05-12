@@ -1,18 +1,17 @@
 import axios from 'axios'
 
+// 不写死 /v1，各函数完整路径，便于 V1 + V2 共存
 const api = axios.create({
-  baseURL: '/darwen/v1',
-  timeout: 30000,
+  baseURL: '/darwen',
+  timeout: 60000,
 })
 
-// 自动附加 JWT token
 api.interceptors.request.use(config => {
   const token = localStorage.getItem('darwen_token')
   if (token) config.headers.Authorization = `Bearer ${token}`
   return config
 })
 
-// 401 自动跳转登录
 api.interceptors.response.use(
   res => res,
   err => {
@@ -25,65 +24,31 @@ api.interceptors.response.use(
   }
 )
 
-export function getScreener(params = {}) {
-  return api.get('/screener', { params })
-}
+// ───────── V1 Auth ─────────
+export const sendVerifyCode = phone => api.post('/v1/auth/send-code', { phone })
+export const sendCodeByUsername = username => api.post('/v1/auth/send-code-by-username', { username })
+export const loginStep1 = data => api.post('/v1/auth/login', data)
+export const loginVerify = data => api.post('/v1/auth/login-verify', data)
+export const loginTrusted = data => api.post('/v1/auth/login-trusted', data)
+export const register = data => api.post('/v1/auth/register', data)
+export const getMe = () => api.get('/v1/auth/me')
 
-export function getCompanyScore(companyId, params = {}) {
-  return api.get(`/company/${companyId}/score`, { params })
-}
+// ───────── V1 User Settings ─────────
+export const getApiKeyStatus = () => api.get('/v1/user/api-key/status')
+export const bindApiKey = (provider, api_key, group_id) =>
+  api.post('/v1/user/api-key', { provider, api_key, group_id })
+export const unbindApiKey = provider =>
+  api.delete('/v1/user/api-key', { data: { provider } })
+export const setDefaultProvider = provider =>
+  api.patch('/v1/user/ai-provider-default', { provider })
 
-export function getCompanyScoreV1(companyId, params = {}) {
-  return api.get(`/company/${companyId}/score-v1`, { params })
-}
-
-export function getCompanyHistory(companyId, params = {}) {
-  return api.get(`/company/${companyId}/history`, { params })
-}
-
-export function getCompanies(params = {}) {
-  return api.get('/companies', { params })
-}
-
-export function getBatchReport(params = {}) {
-  return api.get('/reports/batch', { params })
-}
-
-export function getModels() {
-  return api.get('/meta/models')
-}
-
-export function getIndustries() {
-  return api.get('/meta/industries')
-}
-
-// ── Auth API ─────────────────────────────
-export function sendVerifyCode(phone) {
-  return api.post('/auth/send-code', { phone })
-}
-
-export function sendCodeByUsername(username) {
-  return api.post('/auth/send-code-by-username', { username })
-}
-
-export function loginStep1(data) {
-  return api.post('/auth/login', data)
-}
-
-export function loginVerify(data) {
-  return api.post('/auth/login-verify', data)
-}
-
-export function loginTrusted(data) {
-  return api.post('/auth/login-trusted', data)
-}
-
-export function register(data) {
-  return api.post('/auth/register', data)
-}
-
-export function getMe() {
-  return api.get('/auth/me')
-}
+// ───────── V2 Screening ─────────
+export const getUniversePresets = () => api.get('/v2/universe/presets')
+export const createScreenRun = body => api.post('/v2/screen-run', body)
+export const getScreenRunStatus = runId => api.get(`/v2/screen-run/${runId}`)
+export const getScreenRunResults = (runId, perBucketLimit = 50) =>
+  api.get(`/v2/screen-run/${runId}/results`, { params: { per_bucket_limit: perBucketLimit } })
+export const getCompanyDetail = (runId, companyId) =>
+  api.get(`/v2/screen-run/${runId}/result/${companyId}`)
 
 export default api
