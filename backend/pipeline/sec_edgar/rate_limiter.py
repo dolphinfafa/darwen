@@ -65,3 +65,34 @@ def sec_get(path: str, base_url: str = SEC_BASE_URL, **kwargs) -> dict | list | 
                 continue
             raise
     return None
+
+
+def sec_get_raw(url: str, **kwargs) -> str | None:
+    """带限速直接拉绝对 URL 的原文（HTML / 文本），返回字符串。
+
+    用于 www.sec.gov/Archives/... 等非 JSON 资源。
+    """
+    headers = {
+        "User-Agent": settings.sec_user_agent,
+        "Accept-Encoding": "gzip, deflate",
+        "Accept": "text/html, text/plain, */*",
+    }
+    max_retries = 3
+    for attempt in range(max_retries):
+        _throttle()
+        try:
+            resp = _client.get(url, headers=headers, **kwargs)
+            if resp.status_code == 200:
+                return resp.text
+            if resp.status_code == 429:
+                time.sleep(2 ** (attempt + 1))
+                continue
+            if resp.status_code == 404:
+                return None
+            resp.raise_for_status()
+        except (httpx.TimeoutException, httpx.ConnectError):
+            if attempt < max_retries - 1:
+                time.sleep(2 ** (attempt + 1))
+                continue
+            raise
+    return None
