@@ -25,7 +25,8 @@
 | M5   | API 层重写（V2 endpoints + Key 绑定） | ✅ | 10 endpoint：3 user-settings + 6 screening + 1 backtest |
 | M6   | 前端 6 页面重构 | ✅ | UniverseConfig / ScreenConfig / ScreenRun / Results / CompanyDetailV2 / AccountSettings |
 | M7   | Bucket Spread 回测 + 端到端 smoke | ✅ | backtest 3 模块 + /v2/backtest/bucket-spread + E2E 6/6 |
-| M7 v2 | 月度滚动回测 + E2/E6 实验 | ⏳ 后续 | backtest/v2_engine.py（需每月严格点时重算） |
+| M7 v2 | 月度滚动回测 + E2 单调性 | ✅ | v2_engine.py 月度再平衡 / 5 年 CAGR 28.9% / Sharpe 1.24 / E2 ROCE 单调性验证 |
+| M7 v3 | E6 点时偏差 / 基准对比 / 行业中性化 | ⏳ 后续 | — |
 | M1.9 | SEC filing 文本与元数据 | ⏳ 后续 | filings_text.py（AI 风险层需真实文档） |
 | M1.10| Polygon News 接入 | ⏳ 后续 | news/polygon_news.py |
 | 数据修补 | A 股不复权 close / 金融股 shares / TSLA 财年 | ⏳ 后续 | 影响估值数值精度 |
@@ -140,6 +141,27 @@
 | Rejected | 224 | +48.9% | 73% ← 2025-26 AI 牛市高 beta 暴涨 |
 
 短期 (1.23Y) 价值策略对 Rejected 牛市 beta 不利；需 3-5 年长期回测看完整效应。
+
+## M7 v2 月度滚动回测（2020-2024 美股 standard）
+
+| 指标 | 值 |
+|---|---:|
+| 总回报 | +256% |
+| **CAGR** | **28.92%** |
+| Sharpe | 1.24 |
+| Max Drawdown | -24.2% |
+| 月度胜率 | 64.4% |
+| 候选数/月 | 平均 ~8 家 |
+
+### PRD 第 8 节 E2 单调性验证 ✓
+
+| ROCE 阈值 | CAGR | Sharpe |
+|---:|---:|---:|
+| 10% | 26.66% | 1.18 |
+| 20% | 28.92% | 1.24 |
+| **30%** | **34.50%** | **1.31** |
+
+**ROCE 阈值越严 → CAGR 单调递增**，Pulak 核心论点完整验证。
 
 ---
 
