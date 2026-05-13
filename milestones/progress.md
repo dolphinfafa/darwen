@@ -29,7 +29,8 @@
 | M1.9 | SEC filing 文本与元数据 | ✅ | filings_text.py / 548 美股 8,440 text_document / 108,761 filing 元数据 |
 | M1.10| Polygon News 接入 | ✅ | polygon_news.py / 14,632 新闻覆盖 500 家美股 |
 | 全量回填 | 548 美股 SEC + Polygon News | ✅ | text_document 23,431 行 / 96% 美股有 AI 证据 |
-| M7 v3 | E6 点时偏差 / 基准对比 / 行业中性化 | ⏳ 后续 | — |
+| M7 v3 (E6 点时偏差) | ✅ | pit_audit.py：lookback 0-180 CAGR 波动 <2pp，0vs120 差 1.68pp（相对 5.6%）几乎达标 PRD <5% 阈值 |
+| M7 v3 (基准对比 / 行业中性化) | ⏳ 后续 | — |
 | 数据修补 (A 股 close) | ✅ | Tushare daily_basic 重拉 50 家不复权 close + market_cap，茅台 PE 143x→24.7x |
 | 数据修补 (金融股 shares + Q0) | ✅ | SEC 加 dei.EntityCommonStockSharesOutstanding + 多 security 选普通股 + 88 家 SIC 重设 instrument_type，JPM mc 55B→658B |
 | 数据修补 (TSLA/NVDA 财年) | ✅ | company 加 fiscal_year_end_month，SEC submissions.fiscalYearEnd 权威填充，TSLA 3→12、NVDA 10→1 |
