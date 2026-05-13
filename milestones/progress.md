@@ -31,7 +31,8 @@
 | 全量回填 | 548 美股 SEC + Polygon News | ✅ | text_document 23,431 行 / 96% 美股有 AI 证据 |
 | M7 v3 | E6 点时偏差 / 基准对比 / 行业中性化 | ⏳ 后续 | — |
 | 数据修补 (A 股 close) | ✅ | Tushare daily_basic 重拉 50 家不复权 close + market_cap，茅台 PE 143x→24.7x |
-| 数据修补（其他） | 金融股 shares / TSLA 财年 ⏳ 后续 | 影响估值数值精度 |
+| 数据修补 (金融股 shares + Q0) | ✅ | SEC 加 dei.EntityCommonStockSharesOutstanding + 多 security 选普通股 + 88 家 SIC 重设 instrument_type，JPM mc 55B→658B |
+| 数据修补（其他） | TSLA/NVDA 财年 ⏳ 后续 | 影响估值数值精度 |
 
 ---
 

@@ -69,25 +69,46 @@ class ValuationSnapshot:
     source_fact_ids: dict[str, Optional[str]] = field(default_factory=dict)
 
 
+def _pick_common_security(db: Session, company_id: str) -> Optional[str]:
+    """挑选公司的普通股 security_id。
+
+    选优先级：
+    1. ticker 不含 '-' 且不含 '.PR'（排除优先股 JPM-PK / BRK.A 等）
+    2. 优先长度短的 ticker（普通股一般 1-5 字符，优先股带后缀更长）
+    3. 兜底按 security_id 排序首个
+    """
+    rows = db.execute(
+        select(Security.security_id, Security.ticker)
+        .where(Security.company_id == company_id)
+        .order_by(Security.security_id)
+    ).all()
+    if not rows:
+        return None
+    if len(rows) == 1:
+        return rows[0][0]
+    # 排除带 '-' 的 ticker（优先股，常见 JPM-PK / WFC-PD 等）
+    common = [r for r in rows if r[1] and "-" not in r[1] and ".PR" not in (r[1] or "")]
+    if common:
+        # 优先 ticker 短的（普通股一般最短）
+        common.sort(key=lambda r: (len(r[1] or ""), r[1] or ""))
+        return common[0][0]
+    return rows[0][0]
+
+
 def _get_latest_close(
     db: Session,
     company_id: str,
     asof_date: date,
 ) -> tuple[Optional[float], Optional[date], Optional[float]]:
-    """取该公司任一 security 在 ≤ asof_date 的最新 close 与权威 market_cap。
+    """取该公司普通股 security 在 ≤ asof_date 的最新 close 与权威 market_cap。
 
     返回 (close, trade_date, market_cap_from_data_source)。
     market_cap：A 股从 Tushare daily_basic 落库到 market_bar.market_cap（元单位），
     若有则视为权威值；美股 market_bar 多数 NULL，留给 valuation 自算。
 
-    多 security 公司简化处理：按 security_id 排序取首个。
+    多 security 公司（如金融股有大量优先股）：优先取 ticker 无 '-' 的普通股。
     """
-    sec_id = db.scalar(
-        select(Security.security_id)
-        .where(Security.company_id == company_id)
-        .order_by(Security.security_id)
-        .limit(1)
-    )
+    sec_id = _pick_common_security(db, company_id)
     if sec_id is None:
         return None, None, None
     row = db.execute(
@@ -128,10 +149,11 @@ def compute_valuation_snapshot(
         snap.latest_close = close
         snap.latest_trade_date = trade_date
 
-    # 2. 最新 shares_outstanding（取年报值避免季报混入；股本变化通常按年报口径）
+    # 2. 最新 shares_outstanding（shares 是截面字段，取 ≤ asof 最新即可。
+    # 不限 annual_only，因 dei.EntityCommonStockSharesOutstanding 是季度更新，
+    # 且 SEC us-gaap.WeightedAverage* 单位不规范（部分公司报百万股而非股）。
     sh_fv = get_fact_value_asof(
-        db, company_id, "shares_outstanding", asof_date,
-        market=market, annual_only=True, fiscal_year_end_month=fy_end_month,
+        db, company_id, "shares_outstanding", asof_date, market=market,
     )
     if not sh_fv.is_hit:
         snap.notes.append("NO_SHARES_OUTSTANDING")

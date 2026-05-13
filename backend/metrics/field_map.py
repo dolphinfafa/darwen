@@ -169,7 +169,11 @@ FIELD_MAP: dict[str, dict[str, list[str]]] = {
     # ===== 股本 =====
     "shares_outstanding": {
         # M2.4 dilution & M2.5 pe_ttm
+        # 优先 dei.EntityCommonStockSharesOutstanding（金融股真实股本）；
+        # 多数公司 us-gaap.CommonStockSharesOutstanding 也有，二者并行兜底；
+        # 加权流通股是周期均值，作末端 fallback
         "SEC": [
+            "EntityCommonStockSharesOutstanding",
             "CommonStockSharesOutstanding",
             "WeightedAverageNumberOfSharesOutstandingBasic",
             "WeightedAverageNumberOfShareOutstandingBasicAndDiluted",

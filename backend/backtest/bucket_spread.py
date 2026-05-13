@@ -90,13 +90,9 @@ def _latest_close_on_or_before(
 
 
 def _security_id_for(db: Session, company_id: str) -> Optional[str]:
-    """取该公司任意 security（多 security 公司按 security_id 排序取首个）。"""
-    return db.scalar(
-        select(Security.security_id)
-        .where(Security.company_id == company_id)
-        .order_by(Security.security_id)
-        .limit(1)
-    )
+    """取该公司普通股 security（多 security 公司排除带 '-' 的优先股）。"""
+    from backend.metrics.valuation import _pick_common_security
+    return _pick_common_security(db, company_id)
 
 
 def run_bucket_spread(

@@ -43,6 +43,7 @@ CORE_CONCEPTS = [
     # 股本
     "CommonStockSharesOutstanding",
     "WeightedAverageNumberOfShareOutstandingBasicAndDiluted",
+    "WeightedAverageNumberOfSharesOutstandingBasic",
     # 费用
     "ResearchAndDevelopmentExpense",
     "SellingGeneralAndAdministrativeExpense",
@@ -54,6 +55,14 @@ CORE_CONCEPTS = [
     "PropertyPlantAndEquipmentNet",
     "Goodwill",
     "IntangibleAssetsNetExcludingGoodwill",
+]
+
+
+# dei taxonomy 的实体级元数据（与 us-gaap 平级）
+# 金融股的真实流通股本在 dei.EntityCommonStockSharesOutstanding，
+# us-gaap.CommonStockSharesOutstanding 对它们多数只有 2008-2009 历史值
+DEI_CONCEPTS = [
+    "EntityCommonStockSharesOutstanding",
 ]
 
 
@@ -70,12 +79,15 @@ def fetch_company_facts(cik: str) -> dict | None:
 
 
 def parse_and_store_facts(db: Session, company_id: str, data: dict) -> int:
-    """解析 companyfacts JSON，筛选核心 concepts 并批量存入 fact 表"""
+    """解析 companyfacts JSON，筛选核心 concepts 并批量存入 fact 表。
+
+    遍历 us-gaap + dei 两个 taxonomy。account_code 字段记录 taxonomy 名
+    便于后续 field_map 区分（dei 字段为实体级元数据，如真实流通股本）。
+    """
     if not data:
         return 0
 
     facts_section = data.get("facts", {})
-    us_gaap = facts_section.get("us-gaap", {})
 
     # 先查询已有 fact_id 集合，避免逐条查库
     from sqlalchemy import select
@@ -88,57 +100,60 @@ def parse_and_store_facts(db: Session, company_id: str, data: dict) -> int:
     batch = []
     batch_ids = set()
 
-    for concept_name in CORE_CONCEPTS:
-        concept_data = us_gaap.get(concept_name)
-        if not concept_data:
-            continue
+    # (taxonomy_name, concept_list) 双轨遍历
+    for taxonomy, concepts in (("us-gaap", CORE_CONCEPTS), ("dei", DEI_CONCEPTS)):
+        tx_data = facts_section.get(taxonomy, {})
+        for concept_name in concepts:
+            concept_data = tx_data.get(concept_name)
+            if not concept_data:
+                continue
 
-        units = concept_data.get("units", {})
-        for unit_type, entries in units.items():
-            for entry in entries:
-                form = entry.get("form", "")
-                if form not in ("10-K", "10-Q"):
-                    continue
+            units = concept_data.get("units", {})
+            for unit_type, entries in units.items():
+                for entry in entries:
+                    form = entry.get("form", "")
+                    if form not in ("10-K", "10-Q"):
+                        continue
 
-                period_end = entry.get("end")
-                if not period_end:
-                    continue
+                    period_end = entry.get("end")
+                    if not period_end:
+                        continue
 
-                val = entry.get("val")
-                filed = entry.get("filed", "")
+                    val = entry.get("val")
+                    filed = entry.get("filed", "")
 
-                fact_id = _make_fact_id(company_id, concept_name, period_end, unit_type, form, filed)
+                    fact_id = _make_fact_id(company_id, concept_name, period_end, unit_type, form, filed)
 
-                if fact_id in existing_ids or fact_id in batch_ids:
-                    continue
+                    if fact_id in existing_ids or fact_id in batch_ids:
+                        continue
 
-                filed_date = None
-                if filed:
+                    filed_date = None
+                    if filed:
+                        try:
+                            filed_date = date.fromisoformat(filed)
+                        except ValueError:
+                            pass
+
                     try:
-                        filed_date = date.fromisoformat(filed)
+                        period_end_date = date.fromisoformat(period_end)
                     except ValueError:
-                        pass
+                        continue
 
-                try:
-                    period_end_date = date.fromisoformat(period_end)
-                except ValueError:
-                    continue
-
-                batch_ids.add(fact_id)
-                batch.append(Fact(
-                    fact_id=fact_id,
-                    company_id=company_id,
-                    account_code="us-gaap",
-                    concept=concept_name,
-                    unit=unit_type,
-                    period_end=period_end_date,
-                    fiscal_year=period_end_date.year,
-                    value=float(val) if val is not None else None,
-                    available_date=filed_date,
-                    accepted_date=filed_date,
-                    source_type="SEC",
-                    source_id=f"companyfacts_{company_id}",
-                ))
+                    batch_ids.add(fact_id)
+                    batch.append(Fact(
+                        fact_id=fact_id,
+                        company_id=company_id,
+                        account_code=taxonomy,
+                        concept=concept_name,
+                        unit=unit_type,
+                        period_end=period_end_date,
+                        fiscal_year=period_end_date.year,
+                        value=float(val) if val is not None else None,
+                        available_date=filed_date,
+                        accepted_date=filed_date,
+                        source_type="SEC",
+                        source_id=f"companyfacts_{company_id}",
+                    ))
 
     # 批量写入
     if batch:

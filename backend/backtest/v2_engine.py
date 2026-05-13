@@ -194,16 +194,23 @@ def _load_ni_shares(
 def _load_close_history(
     db: Session, company_ids: list[str], start: date, end: date,
 ) -> dict[str, dict[date, float]]:
-    """预拉 close 历史 {company_id: {date: close}}（取每家 company 第一个 security）"""
-    # 先取 security_id 映射
+    """预拉 close 历史 {company_id: {date: close}}（每 company 选普通股 security）"""
+    # 先取 security_id 映射（优先 ticker 无 '-' 的普通股，排除优先股 JPM-PK 等）
     sec_rows = db.execute(
-        select(Security.company_id, Security.security_id)
+        select(Security.company_id, Security.security_id, Security.ticker)
         .where(Security.company_id.in_(company_ids))
-        .order_by(Security.company_id, Security.security_id)
     ).all()
+    by_company: dict[str, list[tuple[str, str]]] = {}
+    for cid, sid, tk in sec_rows:
+        by_company.setdefault(cid, []).append((sid, tk or ""))
     company_to_sec: dict[str, str] = {}
-    for cid, sid in sec_rows:
-        company_to_sec.setdefault(cid, sid)  # 第一个
+    for cid, lst in by_company.items():
+        common = [r for r in lst if "-" not in r[1] and ".PR" not in r[1]]
+        if common:
+            common.sort(key=lambda r: (len(r[1]), r[1]))
+            company_to_sec[cid] = common[0][0]
+        else:
+            company_to_sec[cid] = sorted(lst, key=lambda r: r[0])[0][0]
 
     if not company_to_sec:
         return {}
