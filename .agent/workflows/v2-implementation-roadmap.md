@@ -2,15 +2,22 @@
 
 本文档定义 Darwen V2 重构剩余里程碑（M2-M7）的执行顺序、关键依赖与验收标准。
 
-**当前状态**：V2 完整工程闭环（M1-M7 + M1.9 + M1.10 + M7 v2 + 548 美股全量回填）。
+**当前状态**：V2 完整工程闭环 + 全部数据修补 + AI 真实调用全过（截至 2026-05-13）。
 
-`milestones/2026-05-12.md` 含 12 章工作记录。系统端到端可用：
+工作日志：
+- `milestones/2026-05-12.md` — M1-M7 主线 + 全量回填 (12 章)
+- `milestones/2026-05-13.md` — A 股 close / 金融股 / TSLA 财年 / E6 / 中文标签 / M4 真实 AI (12 章)
 
-- UI → API → 漏斗筛选 → AI 风险层 → Bucket Spread + 月度滚动回测
-- 96% 美股具备 AI 证据（485 家 SEC 8-K/10-K/10-Q + 500 家 Polygon News）
-- PRD E2 单调性验证：ROCE 10%→30% CAGR 单调上升 26.7%→34.5%
+系统端到端**生产可用**：
 
-剩余后续：数据修补（A 股不复权 close / 金融股 shares / TSLA 财年）/ E6 点时偏差 / 月度回测前端可视化。
+- UI → API → 漏斗筛选 → AI 风险层 (apiyi gpt-4.1-mini 实跑) → Bucket Spread + 月度回测
+- 美股估值精度齐：A 股 Tushare 不复权 + 金融股 dei.Entity 股本 + TSLA/NVDA SEC fye 权威
+- 96% 美股有 AI 证据（485 SEC + 500 News），AI 实测 ~2.5s/家
+- PRD E2 ROCE 单调性验证：10/20/30% CAGR 26.7%/28.9%/34.5%
+- PRD E6 点时严格性：0 vs 120 天 lag 差 5.6%（接近 <5% 阈值）
+- 前端 reason_code 中文化（51 项 + tooltip）
+
+后续可选：月度回测前端可视化 / M7 v3 基准对比 / 行业中性化 / MiniMax 充值。
 
 ---
 
@@ -51,11 +58,40 @@ M1.9 SEC filing 文本 ✅
     ↓
 M1.10 Polygon News ✅
    14,632 新闻覆盖 500 家美股，含 publisher/tickers/keywords 元数据
+    ↓
+数据修补 A 股 close ✅
+   Tushare daily_basic 不复权 + total_mv 替换 V1 akshare 复权价
+   茅台 close 8863→1524 / mc 11T→1.91T / PE 143x→24.7x
+    ↓
+数据修补 金融股 shares + Q0 ✅
+   SEC dei.EntityCommonStockSharesOutstanding 拉取 24,558 行 +
+   _pick_common_security 选普通股排除优先股 +
+   88 家美股按 SIC 重设 instrument_type (BANK 31/BROKER 26/INSURANCE 20/REIT 11)
+   JPM mc 55B→658B / Goldman 11B→181B / MCD PE 0.00002x→23.8x
+    ↓
+数据修补 TSLA/NVDA 财年末 ✅
+   company.fiscal_year_end_month 列 + Alembic 迁移 +
+   SEC submissions.fiscalYearEnd 权威填充 543 美股 + 50 A 股
+   TSLA fye 3→12 / NVDA fye 10→1
+    ↓
+E6 点时偏差校验 ✅
+   pit_audit.py: lookback 0-180 天 CAGR 波动 <2pp
+   美股年报中位披露 lag = 41 天 << 120 天 lookback
+   PRD <5% 阈值几乎达标 (1.68 pp = 5.6%)
+    ↓
+reason_code 中文 label ✅
+   后端 reason_labels.py 51 项映射 + 2 API +
+   前端 ReasonPill 组件按 severity 着色 + layer 边框
+    ↓
+M4 真实 AI 调用 ✅
+   ChatGPT 走 apiyi gpt-4.1-mini 端到端 8 步全过
+   5 家公司 11.8s 含 4 次真实调用，AI 正确识别 Apple/NVDA/TSLA
+   股权稀释 → AI_MINORITY_SHAREHOLDER_RISK → REVIEW
 
-后续迭代：
-M7 v3 E6 点时偏差 / 基准对比 / 行业中性化
-数据修补：A 股不复权 close / 金融股 shares 量级 / TSLA 财年末
-M4 AI 真实调用端到端（用户绑真实 key + 全量证据可用）
+后续可选：
+- 月度回测前端可视化页（净值曲线 + lookback 对比图）
+- M7 v3 基准对比 (vs S&P 500) / 行业中性化 / 多空对冲
+- MiniMax provider 端到端（待用户充值国内版账户）
 ```
 
 ---
@@ -515,3 +551,117 @@ backend/backtest/
 3. 读本文档定位下一里程碑
 4. 看 TaskList 看任务状态
 5. 用 `mysql ... SHOW TABLES` 确认 schema
+
+---
+
+## 已落地的数据修补 SOP（2026-05-13）
+
+### A 股 close 不复权
+
+V1 时代 akshare 拉的 A 股是后复权 hfq 价（茅台 8863 vs 实际 1524）。
+修复方案 C 双源：Tushare daily (不复权) + daily_basic.total_mv 落库 market_bar。
+
+```bash
+# 删除 50 家旧 market_bar 行 + 重拉 Tushare 不复权（2 分钟）
+python -m backend.pipeline.cn_stock_v2.fix_close_unadjusted
+
+# 重算 50 家 metric_periodic
+python -c "
+from backend.metrics.compute import persist_all_metrics_bulk
+from backend.database import SessionLocal
+from backend.models.company import Company
+from sqlalchemy import select
+db = SessionLocal()
+ids = [r[0] for r in db.execute(select(Company.company_id).where(Company.market=='CN_A')).all()]
+persist_all_metrics_bulk(company_ids=ids)
+"
+```
+
+### 金融股 shares + Q0 (3 步)
+
+1. SEC ingest 加 dei.EntityCommonStockSharesOutstanding（已合入 company_facts.CORE_CONCEPTS + DEI_CONCEPTS 双 taxonomy）
+2. valuation._pick_common_security 选 ticker 不含 '-' / '.PR' 的普通股
+3. SIC 重设 instrument_type：6020-6029→BANK / 62xx→BROKER / 63xx→INSURANCE / 6798→REIT
+
+```bash
+# 增量重拉 548 美股 (dei + 新 tag)
+python -m backend.pipeline.sec_edgar.backfill_tags
+
+# SIC 重设 instrument_type（一次性脚本，参考 milestones/2026-05-13.md 七节）
+# 88 家美股从 COMMON 重分类
+```
+
+### TSLA/NVDA 财年末权威化
+
+```bash
+# Alembic 迁移加 company.fiscal_year_end_month
+alembic upgrade head
+
+# 从 SEC submissions.fiscalYearEnd 填充（2 分钟）
+python -m backend.pipeline.sec_edgar.fill_fiscal_year_end
+```
+
+### 重算 metric_periodic
+
+任何数据修补后都要重算指标：
+
+```bash
+# 548 美股 ~12 分钟
+python -c "
+from backend.metrics.compute import persist_all_metrics_bulk
+from backend.database import SessionLocal
+from backend.models.company import Company
+from sqlalchemy import select
+db = SessionLocal()
+ids = [r[0] for r in db.execute(select(Company.company_id).where(Company.market=='US')).all()]
+persist_all_metrics_bulk(company_ids=ids)
+"
+```
+
+---
+
+## AI 真实调用 SOP（2026-05-13）
+
+### 配置 ChatGPT 代理
+
+```ini
+# .env
+DARWEN_FERNET_KEY=...
+DARWEN_CHATGPT_BASE_URL=https://api.apiyi.com/v1
+DARWEN_CHATGPT_MODEL=gpt-4.1-mini
+```
+
+### 用户绑 key（推荐通过 API）
+
+```bash
+# 走 /v1/user/api-key POST
+curl -X POST http://localhost:15001/v1/user/api-key \
+  -H "Authorization: Bearer $JWT" \
+  -H "Content-Type: application/json" \
+  -d '{"provider":"chatgpt","api_key":"sk-..."}'
+```
+
+### 启动 AI 风险层筛选
+
+```bash
+# 走 /v2/screen-run，enable_ai_risk_layer=true
+curl -X POST http://localhost:15001/v2/screen-run \
+  -H "Authorization: Bearer $JWT" -H "Content-Type: application/json" \
+  -d '{
+    "preset":"us_default","as_of_date":"2024-12-31",
+    "risk_sensitivity":"standard","valuation_mode":"strict",
+    "enable_ai_risk_layer":true,"ai_provider":"chatgpt"
+  }'
+```
+
+### 性能与降级
+
+- 每家公司 AI 调用 ~2.5s（实测 apiyi gpt-4.1-mini）
+- 548 全启用 AI 估计 ~20-30 分钟
+- 主 provider 失败自动切备用；两个都失败降级 RULE_ONLY
+- 非 JSON 自动重试 1 次
+
+### MiniMax 待充值
+
+`sk-api-` 国内版 endpoint = `api.minimax.chat/v1/text/chatcompletion_v2`，
+auth ok 但需账户余额（status_code 1008 = 余额不足）。

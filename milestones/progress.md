@@ -5,7 +5,7 @@
 
 ---
 
-## 项目状态：V2 完整工程闭环（M1-M7 + M1.9 + M1.10 + M7 v2 + 548 美股全量回填）
+## 项目状态：V2 完整工程 + 数据精修 + AI 真实调用全过（生产可用）
 
 ---
 
@@ -34,6 +34,8 @@
 | 数据修补 (A 股 close) | ✅ | Tushare daily_basic 重拉 50 家不复权 close + market_cap，茅台 PE 143x→24.7x |
 | 数据修补 (金融股 shares + Q0) | ✅ | SEC 加 dei.EntityCommonStockSharesOutstanding + 多 security 选普通股 + 88 家 SIC 重设 instrument_type，JPM mc 55B→658B |
 | 数据修补 (TSLA/NVDA 财年) | ✅ | company 加 fiscal_year_end_month，SEC submissions.fiscalYearEnd 权威填充，TSLA 3→12、NVDA 10→1 |
+| reason_code 中文 label | ✅ | reason_labels.py 51 项映射 + 2 API + 前端 ReasonPill 组件（按 severity 着色 + layer 边框 + tooltip）|
+| M4 真实 AI 调用 | ✅ | ChatGPT 走 apiyi gpt-4.1-mini，5 家公司 11.8s，Apple/NVDA/TSLA 股权稀释 → AI_MINORITY_SHAREHOLDER_RISK → REVIEW |
 
 ---
 
