@@ -34,6 +34,7 @@ from backend.schemas.v2 import (
 )
 from backend.screening.config import ScreenConfig
 from backend.screening.funnel import _evaluate_one_company
+from backend.screening.reason_labels import all_labels, lookup
 from backend.services.auth import get_current_user
 
 log = logging.getLogger(__name__)
@@ -42,6 +43,23 @@ router = APIRouter(prefix="/v2", tags=["screening"])
 
 
 _STATUS_BUCKETS = ("Rejected", "Review", "TooExpensive", "NearFairPrice", "HighConviction")
+
+
+# ---------------- Reason code 中文 label ----------------
+
+@router.get("/reason-codes/labels")
+def get_reason_code_labels():
+    """返回全部 reason_code → {label, desc, layer, severity} 映射。
+
+    前端启动时拉一次缓存即可，无鉴权（公开词典数据）。
+    """
+    return all_labels()
+
+
+@router.get("/reason-codes/lookup/{code}")
+def lookup_reason_code(code: str):
+    """单个 reason_code 查询（含 _HIGH 后缀解析）。"""
+    return lookup(code)
 
 
 # ---------------- Universe ----------------

@@ -12,7 +12,7 @@
           <span v-if="detail.result.q_strong_track" class="tag-strong">STRONG_TRACK_RECORD</span>
         </div>
         <div class="codes">
-          <span v-for="c in detail.result.reason_codes" :key="c" class="code-pill">{{ c }}</span>
+          <ReasonPill v-for="c in detail.result.reason_codes" :key="c" :code="c" />
         </div>
       </header>
 
@@ -163,6 +163,8 @@
 import { onMounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import { getCompanyDetail } from '../api'
+import { ensureReasonLabels } from '../composables/useReasonLabels'
+import ReasonPill from '../components/ReasonPill.vue'
 
 const route = useRoute()
 const runId = Number(route.params.runId)
@@ -205,6 +207,7 @@ function bucketClass(s) {
 }
 
 onMounted(async () => {
+  await ensureReasonLabels()
   try {
     const { data } = await getCompanyDetail(runId, companyId)
     detail.value = data

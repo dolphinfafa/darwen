@@ -51,4 +51,7 @@ export const getScreenRunResults = (runId, perBucketLimit = 50) =>
 export const getCompanyDetail = (runId, companyId) =>
   api.get(`/v2/screen-run/${runId}/result/${companyId}`)
 
+// ───────── V2 Reason Code 中文标签 ─────────
+export const getReasonCodeLabels = () => api.get('/v2/reason-codes/labels')
+
 export default api

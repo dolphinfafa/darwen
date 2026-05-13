@@ -38,7 +38,7 @@
           <td>{{ fmtPct(r.metrics_snapshot?.roce_5y_median) }}</td>
           <td>{{ fmtNum(r.metrics_snapshot?.pe_ttm) }}</td>
           <td class="codes">
-            <span v-for="c in r.reason_codes" :key="c" class="code-pill">{{ c }}</span>
+            <ReasonPill v-for="c in r.reason_codes" :key="c" :code="c" />
           </td>
           <td><button class="link">详情 →</button></td>
         </tr>
@@ -52,6 +52,8 @@
 import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { getScreenRunResults } from '../api'
+import { ensureReasonLabels } from '../composables/useReasonLabels'
+import ReasonPill from '../components/ReasonPill.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -97,6 +99,7 @@ function goDetail(cid) {
 }
 
 onMounted(async () => {
+  await ensureReasonLabels()
   try {
     const { data } = await getScreenRunResults(runId, 100)
     counts.value = data.counts || {}

@@ -14,8 +14,9 @@
 </template>
 
 <script setup>
-import { ref, computed, watch } from 'vue'
+import { ref, computed, watch, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { ensureReasonLabels } from './composables/useReasonLabels'
 
 const route = useRoute()
 const router = useRouter()
@@ -32,6 +33,9 @@ function loadUser() {
 }
 
 watch(() => route.path, loadUser, { immediate: true })
+
+// 启动时拉一次 reason_code 中文映射
+onMounted(() => { if (localStorage.getItem('darwen_token')) ensureReasonLabels() })
 
 function logout() {
   localStorage.removeItem('darwen_token')
