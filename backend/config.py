@@ -24,6 +24,9 @@ class Settings(BaseSettings):
 
     # AI Layer
     darwen_fernet_key: str = ""
+    darwen_chatgpt_base_url: str = ""
+    darwen_chatgpt_model: str = "gpt-5"
+    darwen_minimax_model: str = "abab-2.7-chat-completion-v2"
 
     # Logging
     log_level: str = "INFO"
