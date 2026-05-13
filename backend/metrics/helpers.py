@@ -245,12 +245,23 @@ def get_fiscal_year_end(
     *,
     market: Optional[str] = None,
 ) -> Optional[int]:
-    """启发式推断公司的财年末月份（1-12）。
+    """返回公司财年末月份（1-12）。
 
-    A 股一律 12 月。美股按 NetIncomeLoss 的"每年最大值 period_end 月份"众数推断。
-    原理：年报全年 NI > 单季 NI，每年取最大值对应的 period_end 即为财年末。
-    回退：若 NetIncomeLoss 不可用，用 Revenues 月份众数（次精度）。
+    优先策略：
+    1. company.fiscal_year_end_month（权威，由 SEC submissions.fiscalYearEnd 填充；A 股 12）
+    2. 启发式 NetIncomeLoss 每年最大值 period_end 月份众数
+    3. 启发式 Revenues 月份众数
+
+    启发式对 TSLA / NVDA 等公司失败（NI 数据噪声导致月份判定错），
+    所以权威字段优先。
     """
+    # 1. 优先从 DB 读权威值
+    fye = db.scalar(
+        select(Company.fiscal_year_end_month).where(Company.company_id == company_id)
+    )
+    if fye is not None:
+        return int(fye)
+
     if market is None:
         market = _get_market(db, company_id)
         if market is None:

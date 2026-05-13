@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 from datetime import date
 
-from sqlalchemy import String, Enum, Date, Boolean
+from sqlalchemy import String, Enum, Date, Boolean, Integer
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from backend.database import Base
@@ -31,6 +31,10 @@ class Company(Base):
         comment="证券类型，用于 Q0 非适用证券过滤",
     )
     list_date: Mapped[date | None] = mapped_column(Date, comment="上市日期")
+    fiscal_year_end_month: Mapped[int | None] = mapped_column(
+        Integer,
+        comment="财年末月份 1-12（SEC submissions.fiscalYearEnd 权威；A 股 12）",
+    )
     is_excluded: Mapped[bool] = mapped_column(
         Boolean, default=False, comment="是否被强制排除（管理员标记）"
     )
