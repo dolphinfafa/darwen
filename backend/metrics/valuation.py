@@ -73,11 +73,14 @@ def _get_latest_close(
     db: Session,
     company_id: str,
     asof_date: date,
-) -> tuple[Optional[float], Optional[date]]:
-    """取该公司任一 security 在 ≤ asof_date 的最新 close。
+) -> tuple[Optional[float], Optional[date], Optional[float]]:
+    """取该公司任一 security 在 ≤ asof_date 的最新 close 与权威 market_cap。
+
+    返回 (close, trade_date, market_cap_from_data_source)。
+    market_cap：A 股从 Tushare daily_basic 落库到 market_bar.market_cap（元单位），
+    若有则视为权威值；美股 market_bar 多数 NULL，留给 valuation 自算。
 
     多 security 公司简化处理：按 security_id 排序取首个。
-    后续可优化为"按 exchange/ticker 选主市场"。
     """
     sec_id = db.scalar(
         select(Security.security_id)
@@ -86,9 +89,9 @@ def _get_latest_close(
         .limit(1)
     )
     if sec_id is None:
-        return None, None
+        return None, None, None
     row = db.execute(
-        select(MarketBar.close, MarketBar.trade_date)
+        select(MarketBar.close, MarketBar.trade_date, MarketBar.market_cap)
         .where(MarketBar.security_id == sec_id)
         .where(MarketBar.trade_date <= asof_date)
         .where(MarketBar.close.isnot(None))
@@ -96,8 +99,9 @@ def _get_latest_close(
         .limit(1)
     ).first()
     if row is None:
-        return None, None
-    return float(row.close), row.trade_date
+        return None, None, None
+    mc = float(row.market_cap) if row.market_cap is not None else None
+    return float(row.close), row.trade_date, mc
 
 
 def compute_valuation_snapshot(
@@ -116,8 +120,8 @@ def compute_valuation_snapshot(
     snap = ValuationSnapshot(company_id=company_id, as_of_date=asof_date, market=market)
     fy_end_month = get_fiscal_year_end(db, company_id, market=market)
 
-    # 1. 最新 close
-    close, trade_date = _get_latest_close(db, company_id, asof_date)
+    # 1. 最新 close（+ 数据源权威 market_cap，A 股 Tushare daily_basic 已落库）
+    close, trade_date, mc_from_source = _get_latest_close(db, company_id, asof_date)
     if close is None:
         snap.notes.append("NO_MARKET_PRICE")
     else:
@@ -136,8 +140,12 @@ def compute_valuation_snapshot(
         snap.shares_period_end = sh_fv.period_end
         snap.source_fact_ids["shares_outstanding"] = sh_fv.fact_id
 
-    # 3. market_cap
-    if snap.latest_close is not None and snap.shares_outstanding is not None:
+    # 3. market_cap：优先用数据源权威值（Tushare total_mv 已写到 market_bar.market_cap），
+    # 回退到 close × shares_outstanding 自算
+    if mc_from_source is not None and mc_from_source > 0:
+        snap.market_cap = mc_from_source
+        snap.notes.append("MC_FROM_DATA_SOURCE")
+    elif snap.latest_close is not None and snap.shares_outstanding is not None:
         snap.market_cap = snap.latest_close * snap.shares_outstanding
 
     # 4. net_income 取最近年报作 TTM proxy（M2.4 v1 简化，未做严格 4 季加总）

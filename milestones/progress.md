@@ -30,7 +30,8 @@
 | M1.10| Polygon News 接入 | ✅ | polygon_news.py / 14,632 新闻覆盖 500 家美股 |
 | 全量回填 | 548 美股 SEC + Polygon News | ✅ | text_document 23,431 行 / 96% 美股有 AI 证据 |
 | M7 v3 | E6 点时偏差 / 基准对比 / 行业中性化 | ⏳ 后续 | — |
-| 数据修补 | A 股不复权 close / 金融股 shares / TSLA 财年 | ⏳ 后续 | 影响估值数值精度 |
+| 数据修补 (A 股 close) | ✅ | Tushare daily_basic 重拉 50 家不复权 close + market_cap，茅台 PE 143x→24.7x |
+| 数据修补（其他） | 金融股 shares / TSLA 财年 ⏳ 后续 | 影响估值数值精度 |
 
 ---
 
@@ -44,7 +45,7 @@
 | company | 598 | 548 美股 + 50 A 股 |
 | metric_periodic | 72,680 | 5 个模块 18 个 distinct metric_name，formula_version 区分 |
 | metric_lineage_log | 86,811 | 每输入字段一行血缘记录 |
-| market_bar | 1,784,230 | 2008-2026，美股 742 + A 股 50（A 股为复权价待修复） |
+| market_bar | 1,731,000+ | 2008-2026，美股 742 + A 股 50（A 股已用 Tushare 不复权 + market_cap 修复） |
 | text_document | 23,431 | SEC 8-K 6,588 + 10-K 813 + 10-Q 1,398 + PG-NEWS 14,632 |
 | filing (accepted_at 完整) | 108,761 / 120,213 (90.5%) | M4 AI 风险层证据可点时追溯 |
 
@@ -87,7 +88,7 @@
 | Nvidia | 39.7% | — | — | ✓ pass + strong | |
 | Medtronic | 52% | — | — | ✓ pass | |
 | 美的集团 | 91.8% | 13.8x | 616B | ✓ pass + strong | mc/PE 与公开数据吻合 |
-| 茅台 | 66.9% | 143x ❌ | 11134B ❌ | ✓ pass | mc/PE 因 V1 复权价失真，roce 正确 |
+| 茅台 | 66.9% | 24.7x ✓ | 1914B ✓ | ✓ pass | 2026-05-13 已修 Tushare 不复权 |
 | 泸州老窖 | 105.7% | — | — | ✓ pass + strong | |
 | Cisco | 22% | — | — | ✓ pass | 修补前 213% 失真 |
 | Visa | Q5_RECENT_NEG_CAP | — | — | 覆核 | 修补前 622% 假阳 |
@@ -186,6 +187,7 @@ PRD 第 6 节"证据优先级"层次完整：法定披露可触发 REJECT，新�
 - `milestones/2026-05-09.md` — M1 完成记录
 - `milestones/2026-05-11.md` — M2 ROCE 落地记录
 - `milestones/2026-05-12.md` — M3-M7 主线收官
+- `milestones/2026-05-13.md` — A 股 close 不复权数据修补
 
 ---
 
