@@ -41,4 +41,7 @@ class ScreenRun(Base):
     passed_count: Mapped[int] = mapped_column(Integer, default=0)
     rejected_count: Mapped[int] = mapped_column(Integer, default=0)
     review_count: Mapped[int] = mapped_column(Integer, default=0)
+    # 进度反馈（每家公司处理完更新，前端轮询实时显示）
+    progress_count: Mapped[int] = mapped_column(Integer, default=0)
+    current_company_name: Mapped[str | None] = mapped_column(String(200))
     error_msg: Mapped[str | None] = mapped_column(Text)

@@ -80,8 +80,27 @@ class ScreenRunStatusResponse(BaseModel):
     passed_count: int
     rejected_count: int
     review_count: int
+    progress_count: int = 0
+    current_company_name: Optional[str] = None
     config_snapshot: Optional[dict] = None
     error_msg: Optional[str] = None
+
+
+class ScreenRunSummary(BaseModel):
+    """精简版用于"我的筛选历史"列表。"""
+    run_id: int
+    universe_name: Optional[str]
+    market: str
+    as_of_date: date
+    status: str
+    started_at: datetime
+    finished_at: Optional[datetime] = None
+    total_count: int
+    progress_count: int = 0
+    passed_count: int
+    rejected_count: int
+    review_count: int
+    current_company_name: Optional[str] = None
 
 
 class ScreenResultRow(BaseModel):

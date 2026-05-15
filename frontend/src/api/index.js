@@ -54,4 +54,7 @@ export const getCompanyDetail = (runId, companyId) =>
 // ───────── V2 Reason Code 中文标签 ─────────
 export const getReasonCodeLabels = () => api.get('/v2/reason-codes/labels')
 
+// ───────── V2 我的筛选历史 ─────────
+export const getMyRuns = (limit = 50) => api.get('/v2/my-runs', { params: { limit } })
+
 export default api

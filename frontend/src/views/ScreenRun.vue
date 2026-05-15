@@ -10,7 +10,10 @@
         <div class="bar">
           <div class="fill" :style="{ width: progressPct + '%' }"></div>
         </div>
-        <div class="muted">{{ completed }}/{{ run.total_count }} 已处理 · 通过 {{ run.passed_count }} · 排除 {{ run.rejected_count }} · 覆核 {{ run.review_count }}</div>
+        <div class="muted">{{ progressCount }}/{{ run.total_count }} 已处理 · 通过 {{ run.passed_count }} · 排除 {{ run.rejected_count }} · 覆核 {{ run.review_count }}</div>
+        <div v-if="run.status === 'running' && run.current_company_name" class="current">
+          🔍 正在评估：<strong>{{ run.current_company_name }}</strong>
+        </div>
       </div>
 
       <div v-if="run.status === 'completed'" class="actions">
@@ -37,13 +40,18 @@ const run = ref(null)
 const error = ref('')
 let timer = null
 
-const completed = computed(() => {
+const progressCount = computed(() => {
   if (!run.value) return 0
-  return (run.value.passed_count || 0) + (run.value.rejected_count || 0) + (run.value.review_count || 0)
+  // 优先用后端权威 progress_count；fallback 用三类计数和
+  return run.value.progress_count || (
+    (run.value.passed_count || 0) +
+    (run.value.rejected_count || 0) +
+    (run.value.review_count || 0)
+  )
 })
 const progressPct = computed(() => {
   if (!run.value?.total_count) return 0
-  return Math.min(100, Math.round(100 * completed.value / run.value.total_count))
+  return Math.min(100, Math.round(100 * progressCount.value / run.value.total_count))
 })
 
 async function refresh() {
@@ -88,6 +96,15 @@ onUnmounted(() => { if (timer) clearInterval(timer) })
 .bar { width: 100%; height: 10px; background: #f0f0f5; border-radius: 6px; overflow: hidden; }
 .fill { height: 100%; background: #4285f4; transition: width .3s; }
 .muted { color: #8888a0; font-size: 0.85rem; margin-top: 6px; }
+.current {
+  margin-top: 10px;
+  padding: 8px 12px;
+  background: #f0f6ff;
+  border-left: 3px solid #4285f4;
+  border-radius: 4px;
+  font-size: 0.9rem;
+  color: #1a3a8a;
+}
 .actions { margin-top: 8px; text-align: right; }
 .actions button {
   padding: 10px 24px; font-size: 1rem; border-radius: 8px;

@@ -30,6 +30,7 @@ from backend.schemas.v2 import (
     ScreenRunCreateRequest,
     ScreenRunCreateResponse,
     ScreenRunStatusResponse,
+    ScreenRunSummary,
     UniversePreset,
 )
 from backend.screening.config import ScreenConfig
@@ -160,15 +161,27 @@ def _execute_run_async(
     as_of_date: date,
     user_id: int,
 ) -> None:
-    """后台任务：跑漏斗并更新 screen_run + screen_result。"""
+    """后台任务：跑漏斗并实时刷新 screen_run 进度。
+
+    每家公司处理后立即 commit 一次 ScreenResult + 进度字段，
+    前端轮询可看到 progress_count + current_company_name 实时变化。
+    """
     from datetime import datetime
     db = SessionLocal()
     try:
         passed = rejected = review = errors = 0
-        for cid in company_ids:
+        for idx, cid in enumerate(company_ids, 1):
             company = db.get(Company, cid)
             if company is None:
+                # 仍更新进度（跳过的也算处理过）
+                _update_run_progress(db, run_id, idx, None,
+                                     passed, rejected, review)
                 continue
+
+            # 1. 先标记"当前正在评估 X"
+            _update_run_progress(db, run_id, idx - 1, company.name,
+                                 passed, rejected, review)
+
             try:
                 params = _evaluate_one_company(
                     db, company, as_of_date, config,
@@ -182,22 +195,65 @@ def _execute_run_async(
                     review += 1
                 else:
                     passed += 1
+                # 2. 提交单家结果 + 刷新累计计数
+                db.commit()
             except Exception as e:  # noqa: BLE001
                 db.rollback()
                 errors += 1
                 log.exception("screening failed for %s: %s", cid, e)
-        db.commit()
 
-        run = db.get(ScreenRun, run_id)
-        run.status = "completed" if errors == 0 else "failed"
-        run.finished_at = datetime.now()
-        run.passed_count = passed
-        run.rejected_count = rejected
-        run.review_count = review
-        run.error_msg = f"{errors} errors" if errors else None
+            # 3. 进度计数 +1
+            _update_run_progress(db, run_id, idx, company.name,
+                                 passed, rejected, review)
+
+        # 4. 终态
+        from sqlalchemy import update as sa_update
+        db.execute(
+            sa_update(ScreenRun)
+            .where(ScreenRun.run_id == run_id)
+            .values(
+                status="completed" if errors == 0 else "failed",
+                finished_at=datetime.now(),
+                passed_count=passed,
+                rejected_count=rejected,
+                review_count=review,
+                progress_count=len(company_ids),
+                current_company_name=None,
+                error_msg=f"{errors} errors" if errors else None,
+            )
+        )
         db.commit()
     finally:
         db.close()
+
+
+def _update_run_progress(
+    db: Session,
+    run_id: int,
+    progress: int,
+    current_company_name: str | None,
+    passed: int,
+    rejected: int,
+    review: int,
+) -> None:
+    """用独立 UPDATE 刷新 screen_run 进度字段并立即 commit。
+
+    用 SQL UPDATE 而非 ORM session 修改，避免与 _evaluate_one_company 内的
+    db.get/db.add 冲突；commit 自身释放表级锁。
+    """
+    from sqlalchemy import update as sa_update
+    db.execute(
+        sa_update(ScreenRun)
+        .where(ScreenRun.run_id == run_id)
+        .values(
+            progress_count=progress,
+            current_company_name=current_company_name,
+            passed_count=passed,
+            rejected_count=rejected,
+            review_count=review,
+        )
+    )
+    db.commit()
 
 
 @router.get("/screen-run/{run_id}", response_model=ScreenRunStatusResponse)
@@ -223,9 +279,44 @@ def get_screen_run(
         passed_count=run.passed_count,
         rejected_count=run.rejected_count,
         review_count=run.review_count,
+        progress_count=run.progress_count,
+        current_company_name=run.current_company_name,
         config_snapshot=run.config_snapshot,
         error_msg=run.error_msg,
     )
+
+
+@router.get("/my-runs", response_model=list[ScreenRunSummary])
+def list_my_runs(
+    limit: int = Query(50, ge=1, le=200),
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """列出当前用户所有 screen_run（按 started_at desc），供"我的筛选历史"页。"""
+    rows = db.execute(
+        select(ScreenRun)
+        .where(ScreenRun.user_id == user.id)
+        .order_by(ScreenRun.started_at.desc())
+        .limit(limit)
+    ).scalars().all()
+    return [
+        ScreenRunSummary(
+            run_id=r.run_id,
+            universe_name=r.universe_name,
+            market=r.market,
+            as_of_date=r.as_of_date,
+            status=r.status,
+            started_at=r.started_at,
+            finished_at=r.finished_at,
+            total_count=r.total_count,
+            progress_count=r.progress_count,
+            passed_count=r.passed_count,
+            rejected_count=r.rejected_count,
+            review_count=r.review_count,
+            current_company_name=r.current_company_name,
+        )
+        for r in rows
+    ]
 
 
 @router.get("/screen-run/{run_id}/results", response_model=ScreenResultBucketResponse)
