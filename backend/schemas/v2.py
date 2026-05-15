@@ -188,3 +188,60 @@ class BacktestCreateRequest(BaseModel):
     end_date: date
     rebalance_freq: Literal["monthly", "quarterly"] = "monthly"
     config: Optional[dict] = None
+
+
+# ============ Company List / Ingest / Profile ============
+
+class CompanyListItem(BaseModel):
+    """股票池选股表格行。"""
+    company_id: str
+    market: str
+    ticker: Optional[str] = None
+    name: str
+    industry_name: Optional[str] = None
+    instrument_type: str
+    fiscal_year_end_month: Optional[int] = None
+
+
+class IndustryItem(BaseModel):
+    industry_name: str
+    count: int
+
+
+class CompanyIngestRequest(BaseModel):
+    market: Literal["US", "CN_A"]
+    code: str = Field(min_length=1, max_length=20, description="美股 CIK 或 A 股 6 位代码")
+
+
+class CompanyIngestStatusResponse(BaseModel):
+    task_id: int
+    market: str
+    code: str
+    status: str            # pending / running / completed / failed
+    current_stage: Optional[str] = None
+    company_id: Optional[str] = None
+    error_msg: Optional[str] = None
+    started_at: datetime
+    finished_at: Optional[datetime] = None
+
+
+class ProfilePoint(BaseModel):
+    """单条公司画像观点（带数据依据）。"""
+    category: Literal["strength", "concern", "neutral"]
+    title: str
+    desc: str
+    metric: Optional[str] = None
+    value: Optional[str] = None
+    period: Optional[str] = None
+
+
+class CompanyProfileResponse(BaseModel):
+    company_id: str
+    name: str
+    market: str
+    industry_name: Optional[str] = None
+    instrument_type: str
+    business_summary: str
+    strengths: list[ProfilePoint] = []
+    concerns: list[ProfilePoint] = []
+    neutral: list[ProfilePoint] = []

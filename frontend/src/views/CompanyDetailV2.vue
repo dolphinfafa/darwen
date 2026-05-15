@@ -16,6 +16,50 @@
         </div>
       </header>
 
+      <!-- 1.5. 公司画像（优化3）-->
+      <section v-if="profile" class="card profile">
+        <h2>公司画像</h2>
+        <p class="muted">{{ profile.business_summary }}</p>
+
+        <div class="profile-grid">
+          <div v-if="profile.strengths?.length" class="col strengths">
+            <h3>✓ 优势</h3>
+            <div v-for="(p, i) in profile.strengths" :key="i" class="point">
+              <strong>{{ p.title }}</strong>
+              <div class="desc">{{ p.desc }}</div>
+              <div v-if="p.metric" class="evidence">
+                依据 · {{ p.metric }} = <code>{{ p.value }}</code>
+                <span v-if="p.period"> · {{ p.period }}</span>
+              </div>
+            </div>
+          </div>
+
+          <div v-if="profile.concerns?.length" class="col concerns">
+            <h3>⚠ 隐忧</h3>
+            <div v-for="(p, i) in profile.concerns" :key="i" class="point">
+              <strong>{{ p.title }}</strong>
+              <div class="desc">{{ p.desc }}</div>
+              <div v-if="p.metric" class="evidence">
+                依据 · {{ p.metric }} = <code>{{ p.value }}</code>
+                <span v-if="p.period"> · {{ p.period }}</span>
+              </div>
+            </div>
+          </div>
+
+          <div v-if="profile.neutral?.length" class="col neutral">
+            <h3>• 中性</h3>
+            <div v-for="(p, i) in profile.neutral" :key="i" class="point">
+              <strong>{{ p.title }}</strong>
+              <div class="desc">{{ p.desc }}</div>
+              <div v-if="p.metric" class="evidence">
+                依据 · {{ p.metric }} = <code>{{ p.value }}</code>
+                <span v-if="p.period"> · {{ p.period }}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
       <!-- 2. 核心指标 -->
       <section class="card">
         <h2>核心指标</h2>
@@ -55,12 +99,16 @@
         </div>
       </section>
 
-      <!-- 3. ROCE 时序 -->
+      <!-- 3. ROCE 时序（含财报下载 - 优化4）-->
       <section class="card">
         <h2>ROCE 年序列</h2>
         <table class="series">
           <thead>
-            <tr><th>财年末</th><th>ROCE</th><th>EBIT (B)</th><th>CapitalEmployed (B)</th><th>NetPPE (B)</th></tr>
+            <tr>
+              <th>财年末</th><th>ROCE</th><th>EBIT (B)</th>
+              <th>CapitalEmployed (B)</th><th>NetPPE (B)</th>
+              <th v-if="detail.market === 'US'">财报</th>
+            </tr>
           </thead>
           <tbody>
             <tr v-for="r in detail.roce_series" :key="r.period_end">
@@ -69,9 +117,18 @@
               <td>{{ fmtBn(r.ebit) }}</td>
               <td>{{ fmtBn(r.capital_employed) }}</td>
               <td>{{ fmtBn(r.net_ppe) }}</td>
+              <td v-if="detail.market === 'US'">
+                <a class="filing-link" :href="filingUrl(detail.company_id, periodYear(r.period_end), '10-K')"
+                   target="_blank" rel="noopener" title="打开 SEC EDGAR 原文">
+                  📄 10-K
+                </a>
+              </td>
             </tr>
           </tbody>
         </table>
+        <p v-if="detail.market === 'CN_A'" class="muted small">
+          A 股年报下载链接由 Tushare 接口暂无原文 URL，待后续补充。可访问 巨潮资讯网 (cninfo.com.cn) 自行查询。
+        </p>
       </section>
 
       <!-- 4. 杠杆 + 现金质量 -->
@@ -133,6 +190,22 @@
         AI 风险层未启用或调用失败（screen_result.r_action={{ detail.result.r_action }}）。
       </section>
 
+      <!-- 5.5. AI 分析提示词（优化5）-->
+      <section v-if="analysisPrompt" class="card prompt-card">
+        <h2>🤖 复制到 AI 深度分析</h2>
+        <p class="muted">
+          把下方提示词粘贴到 ChatGPT / Claude / Gemini，附上财报 PDF（点上方 ROCE 表"10-K"打开 SEC 原文）一起发，
+          即可获得按 Pulak 方法论的深度分析。
+        </p>
+        <pre class="prompt-text">{{ analysisPrompt }}</pre>
+        <div class="prompt-actions">
+          <button class="btn-copy" @click="copyPrompt">
+            {{ copied ? '✓ 已复制' : '📋 一键复制' }}
+          </button>
+          <span class="muted small">长度 {{ analysisPrompt.length }} 字符</span>
+        </div>
+      </section>
+
       <!-- 6. 字段血缘抽屉 -->
       <section class="card">
         <h2 @click="lineageOpen = !lineageOpen" class="clickable">
@@ -162,7 +235,7 @@
 <script setup>
 import { onMounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
-import { getCompanyDetail } from '../api'
+import { getCompanyDetail, getCompanyProfile, getAnalysisPrompt, filingUrl } from '../api'
 import { ensureReasonLabels } from '../composables/useReasonLabels'
 import ReasonPill from '../components/ReasonPill.vue'
 
@@ -171,9 +244,34 @@ const runId = Number(route.params.runId)
 const companyId = route.params.companyId
 
 const detail = ref(null)
+const profile = ref(null)
+const analysisPrompt = ref('')
+const copied = ref(false)
 const loading = ref(true)
 const error = ref('')
 const lineageOpen = ref(false)
+
+function periodYear(periodEnd) {
+  // "2024-09-28" → 2024
+  return parseInt(String(periodEnd).slice(0, 4), 10)
+}
+
+async function copyPrompt() {
+  try {
+    await navigator.clipboard.writeText(analysisPrompt.value)
+    copied.value = true
+    setTimeout(() => { copied.value = false }, 2000)
+  } catch (e) {
+    // fallback
+    const ta = document.createElement('textarea')
+    ta.value = analysisPrompt.value
+    document.body.appendChild(ta); ta.select()
+    document.execCommand('copy')
+    document.body.removeChild(ta)
+    copied.value = true
+    setTimeout(() => { copied.value = false }, 2000)
+  }
+}
 
 function fmtPct(v) { return v == null ? '-' : (v * 100).toFixed(1) + '%' }
 function fmtNum(v) { return v == null ? '-' : Number(v).toFixed(2) }
@@ -216,6 +314,9 @@ onMounted(async () => {
   } finally {
     loading.value = false
   }
+  // 并行加载画像 + 分析提示词（失败不阻塞主页面）
+  getCompanyProfile(companyId).then(r => { profile.value = r.data }).catch(() => {})
+  getAnalysisPrompt(companyId, runId).then(r => { analysisPrompt.value = r.data.prompt }).catch(() => {})
 })
 </script>
 
@@ -254,4 +355,44 @@ table.series th { background: #fafafd; color: #555; }
 .evidence code { background: #f0f0f5; padding: 1px 4px; margin: 0 2px; font-size: 0.75rem; }
 .clickable { cursor: pointer; }
 .error { padding: 12px; background: #fef0f0; color: #c00; border-radius: 6px; }
+
+/* 公司画像（优化3）*/
+.profile h3 { margin: 0 0 10px 0; font-size: 1.0rem; }
+.profile-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; margin-top: 12px; }
+.profile-grid .col { padding: 12px; border-radius: 8px; }
+.profile-grid .strengths { background: #f0faf3; border-left: 3px solid #34a853; }
+.profile-grid .concerns { background: #fef0e6; border-left: 3px solid #ea4335; }
+.profile-grid .neutral { background: #f5f5f7; border-left: 3px solid #888; }
+.profile-grid .strengths h3 { color: #176b3a; }
+.profile-grid .concerns h3 { color: #b30000; }
+.profile-grid .neutral h3 { color: #555; }
+.profile-grid .point { margin: 10px 0; padding-bottom: 10px; border-bottom: 1px dashed rgba(0,0,0,0.08); }
+.profile-grid .point:last-child { border-bottom: none; }
+.profile-grid .point strong { font-size: 0.9rem; }
+.profile-grid .point .desc { margin: 4px 0; font-size: 0.85rem; color: #333; line-height: 1.5; }
+.profile-grid .evidence { font-size: 0.75rem; color: #666; }
+.profile-grid .evidence code { background: rgba(0,0,0,0.06); padding: 1px 5px; border-radius: 3px; }
+
+/* 财报下载链接（优化4）*/
+.filing-link {
+  display: inline-block; padding: 2px 8px; background: #eef3fc;
+  color: #1f3a8a; border-radius: 4px; text-decoration: none; font-size: 0.78rem;
+}
+.filing-link:hover { background: #d6e7f5; }
+.series .small { font-size: 0.8rem; color: #8888a0; margin-top: 8px; }
+
+/* AI 提示词卡（优化5）*/
+.prompt-card pre.prompt-text {
+  max-height: 400px; overflow-y: auto;
+  padding: 14px; background: #fafafd; border: 1px solid #e0e0e8; border-radius: 6px;
+  font-family: ui-monospace, Menlo, Consolas, monospace;
+  font-size: 0.82rem; line-height: 1.5; white-space: pre-wrap; word-break: break-word;
+}
+.prompt-actions { display: flex; align-items: center; gap: 12px; margin-top: 10px; }
+.btn-copy {
+  padding: 8px 18px; border-radius: 6px;
+  background: #4285f4; color: #fff; border: none; cursor: pointer; font-size: 0.9rem;
+}
+.btn-copy:hover { background: #1a73e8; }
+.small { font-size: 0.8rem; }
 </style>

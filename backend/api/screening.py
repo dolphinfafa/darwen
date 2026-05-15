@@ -22,6 +22,9 @@ from backend.models.security import Security
 from backend.models.user import User
 from backend.schemas.v2 import (
     CompanyDetailResponse,
+    CompanyListItem,
+    CompanyProfileResponse,
+    IndustryItem,
     MetricLineageOut,
     RiskAIDetailOut,
     RiskAILabelOut,
@@ -33,6 +36,7 @@ from backend.schemas.v2 import (
     ScreenRunSummary,
     UniversePreset,
 )
+from fastapi.responses import RedirectResponse
 from backend.screening.config import ScreenConfig
 from backend.screening.funnel import _evaluate_one_company
 from backend.screening.reason_labels import all_labels, lookup
@@ -61,6 +65,158 @@ def get_reason_code_labels():
 def lookup_reason_code(code: str):
     """单个 reason_code 查询（含 _HIGH 后缀解析）。"""
     return lookup(code)
+
+
+# ---------------- 公司列表 + 行业（优化1）----------------
+
+@router.get("/companies", response_model=list[CompanyListItem])
+def list_companies(
+    market: Optional[str] = Query(None, description="US | CN_A | 空（全部）"),
+    industry: Optional[str] = Query(None, description="industry_name 精确匹配"),
+    search: Optional[str] = Query(None, description="ticker / name / company_id 模糊"),
+    limit: int = Query(1000, ge=1, le=2000),
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """返回过滤后的公司列表。供 UniverseConfig 表格选股使用。"""
+    from sqlalchemy import or_
+    q = select(Company, Security).join(
+        Security, Security.company_id == Company.company_id, isouter=True,
+    )
+    conditions = []
+    if market:
+        conditions.append(Company.market == market)
+    if industry:
+        conditions.append(Company.industry_name == industry)
+    if search:
+        kw = f"%{search}%"
+        conditions.append(
+            or_(
+                Company.name.like(kw),
+                Security.ticker.like(kw),
+                Company.company_id.like(kw),
+                Company.stock_code.like(kw),
+                Company.cik.like(kw),
+            )
+        )
+    if conditions:
+        q = q.where(*conditions)
+    q = q.order_by(Company.market, Company.name).limit(limit)
+
+    rows = db.execute(q).all()
+    seen: set[str] = set()
+    out: list[CompanyListItem] = []
+    for c, sec in rows:
+        if c.company_id in seen:
+            continue
+        seen.add(c.company_id)
+        out.append(CompanyListItem(
+            company_id=c.company_id,
+            market=c.market,
+            ticker=(sec.ticker if sec else (c.stock_code or c.cik)),
+            name=c.name,
+            industry_name=c.industry_name,
+            instrument_type=c.instrument_type,
+            fiscal_year_end_month=c.fiscal_year_end_month,
+        ))
+    return out
+
+
+@router.get("/industries", response_model=list[IndustryItem])
+def list_industries(
+    market: Optional[str] = Query(None),
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """返回去重后的 industry_name 列表（按公司数倒序），供前端 dropdown。"""
+    from sqlalchemy import func as sa_func
+    q = select(
+        Company.industry_name,
+        sa_func.count(Company.company_id).label("n"),
+    ).where(Company.industry_name.isnot(None))
+    if market:
+        q = q.where(Company.market == market)
+    q = q.group_by(Company.industry_name).order_by(sa_func.count(Company.company_id).desc())
+    return [IndustryItem(industry_name=r[0], count=r[1]) for r in db.execute(q).all()]
+
+
+# ---------------- 公司画像（优化3）----------------
+
+@router.get("/company/{company_id}/profile", response_model=CompanyProfileResponse)
+def get_company_profile(
+    company_id: str,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """规则化生成公司画像（业务描述 + 优势/隐忧/中性观点 + 数据依据）。"""
+    from backend.screening.company_profile import generate_profile
+    profile = generate_profile(db, company_id)
+    if profile is None:
+        raise HTTPException(404, "company not found")
+    return profile
+
+
+# ---------------- 财报下载 302 跳转（优化4）----------------
+
+@router.get("/company/{company_id}/filing-url")
+def get_filing_url(
+    company_id: str,
+    year: int = Query(..., description="财年年份"),
+    form: str = Query("10-K", description="10-K / 10-Q / 8-K"),
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """按 (company, year, form_type) 查 filing，302 redirect 到 SEC 原文链接。"""
+    from backend.models.filing import Filing
+    from datetime import date as date_cls
+    from sqlalchemy import and_
+
+    # filing 表只有 filed_date（提交日），没有 period_end。10-K 通常在财年末后
+    # 60-90 天内 filed，所以"FY{year}"的 10-K filed_date 应该在 {year}-01-01 至
+    # {year+1}-04-30 之间（容忍各种财年末月份 + 披露延迟）
+    window_start = date_cls(year, 1, 1)
+    window_end = date_cls(year + 1, 4, 30)
+
+    def _query(require_pdf: bool):
+        conds = [
+            Filing.company_id == company_id,
+            Filing.form_type == form,
+            Filing.filed_date >= window_start,
+            Filing.filed_date <= window_end,
+        ]
+        if require_pdf:
+            conds.append(Filing.url_pdf.isnot(None))
+        return db.execute(
+            select(Filing.url_pdf, Filing.url, Filing.filing_id, Filing.filed_date)
+            .where(and_(*conds))
+            .order_by(Filing.filed_date.desc())
+            .limit(1)
+        ).first()
+
+    row = _query(require_pdf=True) or _query(require_pdf=False)
+    if row is None:
+        raise HTTPException(404, f"未找到 {company_id} 的 {year} {form} filing")
+    target = row.url_pdf or row.url
+    if not target:
+        raise HTTPException(404, f"filing {row.filing_id} 缺失 url")
+    return RedirectResponse(url=target, status_code=302)
+
+
+# ---------------- AI 分析提示词（优化5）----------------
+
+@router.get("/company/{company_id}/analysis-prompt")
+def get_analysis_prompt(
+    company_id: str,
+    run_id: Optional[int] = Query(None),
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """生成给 ChatGPT/Claude 用的中文分析 prompt（含 Pulak 方法论 + 指标 + 引导问题）。"""
+    from backend.screening.analysis_prompt import generate_analysis_prompt
+    prompt = generate_analysis_prompt(db, company_id, run_id=run_id)
+    if prompt is None:
+        raise HTTPException(404, "company not found")
+    return {"company_id": company_id, "prompt": prompt}
 
 
 # ---------------- Universe ----------------

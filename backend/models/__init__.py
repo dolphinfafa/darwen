@@ -13,6 +13,7 @@ from backend.models.screen_run import ScreenRun
 from backend.models.screen_result import ScreenResult
 from backend.models.metric_periodic import MetricPeriodic
 from backend.models.metric_lineage_log import MetricLineageLog
+from backend.models.ingest_task import IngestTask
 
 __all__ = [
     "Company",
@@ -27,4 +28,5 @@ __all__ = [
     "ScreenResult",
     "MetricPeriodic",
     "MetricLineageLog",
+    "IngestTask",
 ]

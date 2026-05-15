@@ -1,95 +1,252 @@
 <template>
   <div class="page">
     <h1>新建筛选 · 第 1 步 · 选择股票池</h1>
-    <p class="hint">先选股票池，再到下一步配置门槛。</p>
+    <p class="hint">从下表勾选公司进入股票池，或点"新增股票"输入 CIK/代码自动拉取。</p>
 
-    <div class="presets">
-      <div
-        v-for="p in presets"
-        :key="p.name"
-        class="preset-card"
-        :class="{ active: selected === p.name }"
-        @click="selectPreset(p.name)"
-      >
-        <h3>{{ p.label }}</h3>
-        <div class="muted">{{ p.market }} · {{ p.member_count }} 家</div>
-      </div>
+    <div class="toolbar">
+      <select v-model="filters.market" @change="reload">
+        <option value="">全部市场</option>
+        <option value="US">美股</option>
+        <option value="CN_A">A 股</option>
+      </select>
 
-      <div class="preset-card" :class="{ active: selected === 'custom' }" @click="selectPreset('custom')">
-        <h3>自定义</h3>
-        <div class="muted">手工 ticker 列表</div>
-      </div>
+      <select v-model="filters.industry" @change="reload">
+        <option value="">全部行业</option>
+        <option v-for="ind in industries" :key="ind.industry_name" :value="ind.industry_name">
+          {{ ind.industry_name }} ({{ ind.count }})
+        </option>
+      </select>
+
+      <input
+        type="text"
+        v-model="filters.search"
+        placeholder="搜索 ticker / 公司名 / 代码"
+        @keyup.enter="reload"
+      />
+      <button class="btn-secondary" @click="reload">🔍 搜索</button>
+
+      <span class="spacer"></span>
+
+      <button class="btn-secondary" @click="showAddModal = true">➕ 新增股票</button>
+      <button class="btn-secondary" @click="selectAll" :disabled="!rows.length">全选当前</button>
+      <button class="btn-secondary" @click="clearSelection" :disabled="!selected.size">清空</button>
     </div>
 
-    <div v-if="selected === 'custom'" class="custom-input">
-      <label>逗号分隔的 company_id（如 <code>US_0000789019, CN_600519</code>）</label>
-      <textarea v-model="customIds" rows="4" placeholder="US_0000789019, CN_600519, US_0000320193"></textarea>
+    <div class="status-bar">
+      <span class="muted">显示 {{ rows.length }} 家</span>
+      ·
+      <strong>已选 {{ selected.size }} 家</strong>
     </div>
+
+    <div v-if="loading" class="muted center">加载中…</div>
+    <div v-else-if="error" class="error">{{ error }}</div>
+    <table v-else-if="rows.length" class="companies">
+      <thead>
+        <tr>
+          <th width="40">
+            <input type="checkbox" :checked="allCurrentSelected" @change="togglePage" />
+          </th>
+          <th>Ticker</th>
+          <th>公司</th>
+          <th>市场</th>
+          <th>行业</th>
+          <th>类型</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr v-for="r in rows" :key="r.company_id"
+            :class="{ selected: selected.has(r.company_id) }"
+            @click="toggle(r.company_id)">
+          <td>
+            <input type="checkbox"
+                   :checked="selected.has(r.company_id)"
+                   @click.stop="toggle(r.company_id)" />
+          </td>
+          <td><code>{{ r.ticker || '-' }}</code></td>
+          <td>{{ r.name }}</td>
+          <td>
+            <span class="market" :class="r.market.toLowerCase()">{{ r.market }}</span>
+          </td>
+          <td>{{ r.industry_name || '-' }}</td>
+          <td><span class="instrument">{{ r.instrument_type }}</span></td>
+        </tr>
+      </tbody>
+    </table>
+    <div v-else class="muted center">无匹配公司</div>
 
     <div class="actions">
-      <button :disabled="!canProceed" @click="next">下一步：配置门槛 →</button>
+      <button class="btn-primary" :disabled="!selected.size" @click="next">
+        下一步：配置门槛 →（{{ selected.size }} 家）
+      </button>
     </div>
+
+    <!-- 新增股票模态框 -->
+    <AddCompanyModal
+      v-if="showAddModal"
+      @close="showAddModal = false"
+      @added="onCompanyAdded"
+    />
   </div>
 </template>
 
 <script setup>
-import { onMounted, ref, computed } from 'vue'
+import { computed, onMounted, ref, reactive } from 'vue'
 import { useRouter } from 'vue-router'
-import { getUniversePresets } from '../api'
+import { getCompanies, getIndustries } from '../api'
+import AddCompanyModal from '../components/AddCompanyModal.vue'
 
 const router = useRouter()
-const presets = ref([])
-const selected = ref('us_default')
-const customIds = ref('')
+const rows = ref([])
+const industries = ref([])
+const loading = ref(false)
+const error = ref('')
+const showAddModal = ref(false)
+const selected = ref(new Set())  // 选中的 company_id
 
-onMounted(async () => {
+const filters = reactive({
+  market: 'US',  // 默认美股
+  industry: '',
+  search: '',
+})
+
+// 从 sessionStorage 恢复（用户在 ScreenConfig 返回后保留选择）
+const STORAGE_KEY = 'darwen_universe_selected'
+
+function loadSelection() {
   try {
-    const { data } = await getUniversePresets()
-    presets.value = data
+    const raw = sessionStorage.getItem(STORAGE_KEY)
+    if (raw) selected.value = new Set(JSON.parse(raw))
+  } catch {}
+}
+function saveSelection() {
+  sessionStorage.setItem(STORAGE_KEY, JSON.stringify([...selected.value]))
+}
+
+async function reload() {
+  loading.value = true
+  error.value = ''
+  try {
+    const params = {}
+    if (filters.market) params.market = filters.market
+    if (filters.industry) params.industry = filters.industry
+    if (filters.search) params.search = filters.search
+    params.limit = 1000
+    const { data } = await getCompanies(params)
+    rows.value = data
+    // 切市场时也刷新行业列表
+    const { data: inds } = await getIndustries(filters.market)
+    industries.value = inds
   } catch (e) {
-    presets.value = []
+    error.value = e.response?.data?.detail || e.message
+  } finally {
+    loading.value = false
   }
+}
+
+function toggle(cid) {
+  const s = selected.value
+  if (s.has(cid)) s.delete(cid)
+  else s.add(cid)
+  selected.value = new Set(s)
+  saveSelection()
+}
+
+const allCurrentSelected = computed(() => {
+  return rows.value.length > 0 && rows.value.every(r => selected.value.has(r.company_id))
 })
 
-const canProceed = computed(() => {
-  if (selected.value === 'custom') return customIds.value.trim().length > 0
-  return !!selected.value
-})
+function togglePage(e) {
+  if (e.target.checked) {
+    rows.value.forEach(r => selected.value.add(r.company_id))
+  } else {
+    rows.value.forEach(r => selected.value.delete(r.company_id))
+  }
+  selected.value = new Set(selected.value)
+  saveSelection()
+}
 
-function selectPreset(name) { selected.value = name }
+function selectAll() {
+  rows.value.forEach(r => selected.value.add(r.company_id))
+  selected.value = new Set(selected.value)
+  saveSelection()
+}
+
+function clearSelection() {
+  selected.value = new Set()
+  saveSelection()
+}
+
+function onCompanyAdded(companyId) {
+  // ingest 完成后，加入选中 + 刷新列表
+  selected.value.add(companyId)
+  selected.value = new Set(selected.value)
+  saveSelection()
+  showAddModal.value = false
+  reload()
+}
 
 function next() {
-  const params = { universe: selected.value }
-  if (selected.value === 'custom') {
-    const ids = customIds.value.split(/[,\s]+/).map(s => s.trim()).filter(Boolean)
-    sessionStorage.setItem('darwen_custom_ids', JSON.stringify(ids))
-  }
-  router.push({ name: 'ScreenConfig', query: params })
+  // 自定义池
+  const ids = [...selected.value]
+  sessionStorage.setItem('darwen_custom_ids', JSON.stringify(ids))
+  router.push({ name: 'ScreenConfig', query: { universe: 'custom' } })
 }
+
+onMounted(() => {
+  loadSelection()
+  reload()
+})
 </script>
 
 <style scoped>
-.page { padding: 24px; max-width: 960px; margin: 0 auto; }
-.hint { color: #8888a0; margin-bottom: 24px; }
-.presets { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 16px; }
-.preset-card {
-  padding: 18px; border: 1px solid #e0e0e8; border-radius: 10px;
-  cursor: pointer; background: #fff; transition: all .15s;
+.page { padding: 24px; max-width: 1280px; margin: 0 auto; }
+.hint { color: #8888a0; margin-bottom: 16px; }
+.toolbar {
+  display: flex; gap: 8px; flex-wrap: wrap; align-items: center;
+  margin-bottom: 12px;
 }
-.preset-card:hover { border-color: #4285f4; }
-.preset-card.active { border-color: #4285f4; background: #f0f6ff; box-shadow: 0 2px 8px rgba(66,133,244,.15); }
-.preset-card h3 { margin: 0 0 6px 0; font-size: 1.05rem; }
-.muted { color: #8888a0; font-size: 0.9rem; }
-.custom-input { margin-top: 24px; }
-.custom-input label { display: block; color: #555; margin-bottom: 6px; }
-.custom-input textarea {
-  width: 100%; padding: 10px; font-family: ui-monospace, Menlo, monospace;
-  font-size: 0.85rem; border: 1px solid #ccc; border-radius: 6px;
+.toolbar select, .toolbar input[type="text"] {
+  padding: 6px 10px; border: 1px solid #ccc; border-radius: 6px; font-size: 0.9rem;
 }
-.actions { margin-top: 32px; text-align: right; }
-.actions button {
-  padding: 10px 24px; font-size: 1rem; border-radius: 8px;
-  background: #4285f4; color: #fff; border: none; cursor: pointer;
+.toolbar input[type="text"] { flex: 1; min-width: 200px; max-width: 300px; }
+.toolbar .spacer { flex: 1; }
+.btn-secondary {
+  padding: 6px 14px; border: 1px solid #ccc; border-radius: 6px;
+  background: #fff; color: #444; cursor: pointer; font-size: 0.9rem;
 }
-.actions button:disabled { background: #ccc; cursor: not-allowed; }
+.btn-secondary:hover:not(:disabled) { border-color: #4285f4; color: #4285f4; }
+.btn-secondary:disabled { opacity: 0.5; cursor: not-allowed; }
+.btn-primary {
+  padding: 10px 24px; border-radius: 8px; background: #4285f4;
+  color: #fff; border: none; cursor: pointer; font-size: 1rem;
+}
+.btn-primary:disabled { background: #ccc; cursor: not-allowed; }
+.status-bar { font-size: 0.9rem; margin-bottom: 8px; color: #555; }
+.muted { color: #8888a0; }
+.center { text-align: center; padding: 30px; }
+.error { padding: 12px; background: #fef0f0; color: #c00; border-radius: 6px; }
+
+.companies { width: 100%; border-collapse: collapse; background: #fff; font-size: 0.9rem; }
+.companies th, .companies td {
+  padding: 8px 12px; text-align: left; border-bottom: 1px solid #f0f0f5;
+}
+.companies th {
+  background: #fafafd; color: #555; font-weight: 600; font-size: 0.85rem;
+  position: sticky; top: 0;
+}
+.companies tbody tr { cursor: pointer; }
+.companies tbody tr:hover { background: #f5f9ff; }
+.companies tbody tr.selected { background: #f0f6ff; }
+.companies code { background: #f0f0f5; padding: 1px 6px; border-radius: 3px; font-size: 0.85em; }
+
+.market {
+  display: inline-block; padding: 1px 6px; border-radius: 4px;
+  font-size: 0.75rem; font-weight: 600;
+}
+.market.us { background: #d6e7f5; color: #1768b0; }
+.market.cn_a { background: #fde0e0; color: #c00; }
+.instrument {
+  font-size: 0.75rem; color: #888;
+}
+.actions { margin-top: 24px; text-align: right; }
 </style>

@@ -57,4 +57,25 @@ export const getReasonCodeLabels = () => api.get('/v2/reason-codes/labels')
 // ───────── V2 我的筛选历史 ─────────
 export const getMyRuns = (limit = 50) => api.get('/v2/my-runs', { params: { limit } })
 
+// ───────── V2 公司列表 + 行业（优化1） ─────────
+export const getCompanies = (params = {}) => api.get('/v2/companies', { params })
+export const getIndustries = (market = '') =>
+  api.get('/v2/industries', { params: market ? { market } : {} })
+
+// ───────── V2 手动 ingest（优化2） ─────────
+export const ingestCompany = (market, code) =>
+  api.post('/v2/companies/ingest', { market, code })
+export const getIngestStatus = taskId =>
+  api.get(`/v2/companies/ingest/${taskId}`)
+
+// ───────── V2 公司画像 + 提示词（优化3 / 5） ─────────
+export const getCompanyProfile = cid =>
+  api.get(`/v2/company/${cid}/profile`)
+export const getAnalysisPrompt = (cid, runId = null) =>
+  api.get(`/v2/company/${cid}/analysis-prompt`, runId ? { params: { run_id: runId } } : {})
+
+// 财报下载 URL（用 <a> 直接打开浏览器）
+export const filingUrl = (cid, year, form = '10-K') =>
+  `/darwen/v2/company/${cid}/filing-url?year=${year}&form=${form}`
+
 export default api
