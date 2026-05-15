@@ -39,9 +39,10 @@
 - 依赖：`requirements.txt`
 - 新增依赖前必须征得用户同意
 
-### 端口
+### 端口（2026-05-15 修正）
 
-- 后端 API：15001（zheyang 用户范围 15000-19999）
-- 前端 dev：15002
+- **后端 API：15003**（V2 实际端口；15001 已被 punkrecord 长期占用）
+- 前端 dev：15002（root dev_web vite 反代 base=/darwen/）
 - 占用查询：`curl -s http://localhost:555/api/summary`
 - 严禁占用其他用户范围端口
+- nginx `/darwen/v1/` 和 `/darwen/v2/` 反代到 `127.0.0.1:15003`
