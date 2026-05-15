@@ -10,13 +10,33 @@ from alibabacloud_tea_openapi import models as open_api_models
 from alibabacloud_dysmsapi20170525 import models as dysmsapi_models
 from alibabacloud_tea_util import models as util_models
 
-# 阿里云 SMS 配置（从环境变量读取）
+# 阿里云 SMS 配置：运行时从 settings 读取，避免模块加载时 os.getenv 求值
+# （pydantic-settings 从 .env 加载到 Settings 实例，不会同时写入 os.environ）
 import os
-ACCESS_KEY_ID = os.getenv("ALIYUN_SMS_KEY_ID", "")
-ACCESS_KEY_SECRET = os.getenv("ALIYUN_SMS_KEY_SECRET", "")
-SIGN_NAME = os.getenv("ALIYUN_SMS_SIGN", "武汉有易思网络科技")
-TEMPLATE_CODE = os.getenv("ALIYUN_SMS_TEMPLATE", "SMS_205245667")
 ENDPOINT = "dysmsapi.aliyuncs.com"
+
+
+def _get_sms_config() -> tuple[str, str, str, str]:
+    """运行时返回 (access_key_id, access_key_secret, sign_name, template_code)。
+
+    优先 backend.config.Settings（从 .env 加载），回退到 os.environ。
+    """
+    try:
+        from backend.config import get_settings
+        s = get_settings()
+        return (
+            s.aliyun_sms_key_id or os.getenv("ALIYUN_SMS_KEY_ID", ""),
+            s.aliyun_sms_key_secret or os.getenv("ALIYUN_SMS_KEY_SECRET", ""),
+            s.aliyun_sms_sign or os.getenv("ALIYUN_SMS_SIGN", "武汉有易思网络科技"),
+            s.aliyun_sms_template or os.getenv("ALIYUN_SMS_TEMPLATE", "SMS_205245667"),
+        )
+    except Exception:
+        return (
+            os.getenv("ALIYUN_SMS_KEY_ID", ""),
+            os.getenv("ALIYUN_SMS_KEY_SECRET", ""),
+            os.getenv("ALIYUN_SMS_SIGN", "武汉有易思网络科技"),
+            os.getenv("ALIYUN_SMS_TEMPLATE", "SMS_205245667"),
+        )
 
 # 内存缓存：phone -> (code, expire_ts)
 _code_cache: dict[str, tuple[str, float]] = {}
@@ -28,9 +48,10 @@ CODE_EXPIRE_SECONDS = 300  # 验证码 5 分钟有效
 
 
 def _create_client() -> DysmsapiClient:
+    key_id, key_secret, _, _ = _get_sms_config()
     config = open_api_models.Config(
-        access_key_id=ACCESS_KEY_ID,
-        access_key_secret=ACCESS_KEY_SECRET,
+        access_key_id=key_id,
+        access_key_secret=key_secret,
     )
     config.endpoint = ENDPOINT
     return DysmsapiClient(config)
@@ -53,11 +74,12 @@ def send_verification_code(phone: str) -> tuple[bool, str]:
     code = generate_code()
 
     try:
+        _, _, sign_name, template_code = _get_sms_config()
         client = _create_client()
         request = dysmsapi_models.SendSmsRequest(
             phone_numbers=phone,
-            sign_name=SIGN_NAME,
-            template_code=TEMPLATE_CODE,
+            sign_name=sign_name,
+            template_code=template_code,
             template_param=json.dumps({"code": code}),
         )
         runtime = util_models.RuntimeOptions()

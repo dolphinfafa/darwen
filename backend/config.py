@@ -22,6 +22,12 @@ class Settings(BaseSettings):
     tushare_token: str = ""
     polygon_api_key: str = ""
 
+    # 阿里云 SMS（pydantic-settings 大小写不敏感，读 .env 的 ALIYUN_SMS_*）
+    aliyun_sms_key_id: str = ""
+    aliyun_sms_key_secret: str = ""
+    aliyun_sms_sign: str = "武汉有易思网络科技"
+    aliyun_sms_template: str = "SMS_205245667"
+
     # AI Layer
     darwen_fernet_key: str = ""
     darwen_chatgpt_base_url: str = ""
