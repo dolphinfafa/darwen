@@ -55,9 +55,11 @@ class ScreenRunCreateRequest(BaseModel):
     # 配置（透传到 ScreenConfig）
     risk_sensitivity: Literal["strict", "standard", "loose"] = "standard"
     valuation_mode: Literal["strict", "standard", "loose"] = "strict"
-    roce_threshold: float = 0.20
+    roce_threshold: float = Field(default=0.20, ge=0.0, le=1.0)
+    roce_lookback_years: int = Field(default=5, ge=3, le=15)
     enable_ai_risk_layer: bool = False
     ai_provider: Optional[Literal["chatgpt", "minimax"]] = None
+    auto_advance: bool = False  # True=三层连跑；False=每层暂停等人工 gate
 
     model_config = {"extra": "ignore"}
 
@@ -84,6 +86,10 @@ class ScreenRunStatusResponse(BaseModel):
     current_company_name: Optional[str] = None
     config_snapshot: Optional[dict] = None
     error_msg: Optional[str] = None
+    # 三层漏斗分层状态（funnel_v2）
+    current_layer: Optional[str] = None   # roce|sturdiness|risk|done
+    layer_status: Optional[str] = None    # running|awaiting_review|completed|failed
+    auto_advance: bool = False
 
 
 class ScreenRunSummary(BaseModel):
@@ -171,6 +177,8 @@ class CompanyDetailResponse(BaseModel):
     instrument_type: str
 
     result: ScreenResultRow
+    rejected_at_layer: Optional[str] = None   # roce|sturdiness|risk；空=入选
+    layer_results: dict = {}                  # funnel_v2 逐层结果（含 AI principles + evidence）
     roce_series: list[dict] = []         # [{year, period_end, roce, capital_employed, ebit, ...}]
     leverage_series: list[dict] = []     # [{period_end, net_debt, net_debt_ebit, interest_coverage, current_ratio}]
     cash_quality_series: list[dict] = [] # [{period_end, cfo_ni_ratio, fcf}]
@@ -178,6 +186,119 @@ class CompanyDetailResponse(BaseModel):
     valuation_snapshot: dict = {}        # {market_cap, pe_ttm, ev_ebit, enterprise_value, as_of}
     ai_result: Optional[RiskAIDetailOut] = None
     lineage: list[MetricLineageOut] = []
+
+
+# ============ 我的股票池 watchlist ============
+
+class WatchlistCreateRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=100)
+
+
+class WatchlistRenameRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=100)
+
+
+class WatchlistItemAddRequest(BaseModel):
+    company_id: str
+    source_run_id: Optional[int] = None
+    note: Optional[str] = None
+
+
+class AddToWatchlistRequest(BaseModel):
+    """详情页"进入我的股票池"：指定已有池 id，或给名字自动建/复用。"""
+    company_id: str
+    watchlist_id: Optional[int] = None
+    watchlist_name: Optional[str] = None
+    source_run_id: Optional[int] = None
+    note: Optional[str] = None
+
+
+class WatchlistSummary(BaseModel):
+    id: int
+    name: str
+    item_count: int
+    created_at: datetime
+    updated_at: datetime
+
+
+class WatchlistItemOut(BaseModel):
+    company_id: str
+    ticker: Optional[str] = None
+    name: str
+    market: str
+    industry_name: Optional[str] = None
+    note: Optional[str] = None
+    source_run_id: Optional[int] = None
+    added_at: datetime
+
+
+class WatchlistDetailResponse(BaseModel):
+    id: int
+    name: str
+    items: list[WatchlistItemOut] = []
+
+
+# ============ 三层漏斗（funnel_v2）============
+
+class ManualActionRequest(BaseModel):
+    """人工 gate：放行被过滤的 / 剔除已通过的（针对当前层）。"""
+    company_id: str
+    action: Literal["force_pass", "force_reject"]
+    note: Optional[str] = None
+
+
+class FunnelCompany(BaseModel):
+    company_id: str
+    ticker: Optional[str] = None
+    name: str
+    market: str
+    industry_name: Optional[str] = None
+    reason_codes: list[str] = []
+    metrics_snapshot: dict[str, Any] = {}
+    layer_results: dict[str, Any] = {}
+    manual_action: Optional[dict] = None
+
+
+class FunnelLayer(BaseModel):
+    layer: str            # roce | sturdiness | risk
+    label: str
+    state: str            # pending | running | awaiting_review | completed
+    input_count: int      # 进入本层的公司数
+    passed_count: int     # 通过本层（进入下一层）
+    rejected_count: int   # 本层被过滤
+    rejected: list[FunnelCompany] = []   # 被本层过滤的公司（含人工剔除）
+
+
+class FunnelResponse(BaseModel):
+    run_id: int
+    run_status: str               # running | completed | failed
+    current_layer: Optional[str]
+    layer_status: Optional[str]
+    auto_advance: bool
+    total: int
+    layers: list[FunnelLayer]
+    survivors: list[FunnelCompany] = []  # 当前存活/最终入选（rejected_at_layer 为空）
+
+
+class AdvanceResponse(BaseModel):
+    run_id: int
+    next_layer: Optional[str]
+    layer_status: str
+
+
+class RunRenameRequest(BaseModel):
+    """重命名筛选批次（我的筛选历史页）。"""
+    name: str = Field(min_length=1, max_length=100)
+
+
+class EvidenceDoc(BaseModel):
+    """AI 原因出处文档（evidence_doc_ids 解析）。"""
+    doc_id: str
+    title: str = ""
+    source_type: Optional[str] = None
+    doc_type: Optional[str] = None
+    url: Optional[str] = None
+    published_at: Optional[str] = None
 
 
 # ============ Backtest（M7 占位） ============

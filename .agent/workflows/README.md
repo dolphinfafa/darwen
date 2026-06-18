@@ -6,12 +6,17 @@
 
 | 工作流 | 用途 |
 |---|---|
-| `v2-implementation-roadmap.md` | V2 三层漏斗系统的剩余实施路线图（M2-M7） |
+| `v2-implementation-roadmap.md` | 路线图 + **现行架构（2026-06-18 ROCE→稳健→风险 三层漏斗）**；历史 M2-M7 供追溯 |
 | `data-ingestion.md` | 数据接入工作流（SEC / Polygon / Tushare） |
 | `metric-computation.md` | 指标预计算工作流（ROCE 等） |
 | `ai-risk-layer.md` | AI 风险层调用、prompt 版本管理、失败回退 |
 | `screening-funnel.md` | 三层漏斗筛选执行流程 |
 | `backtest-pit.md` | 点时回测工作流 |
+
+> **现行筛选引擎**：`backend/screening/funnel_v2.py`（ROCE→稳健性→风险性 + 分层人工 gate）。
+> AI 双层：`ai/orchestrator.analyze_layer(layer=sturdiness|risk)`。我的股票池：`api/watchlist.py`。
+> 旧 Q/R/V（`funnel.py`/`v_layer.py`、`ScreenConfig.vue`/`ScreenResults.vue`）保留 deprecated。
+> 详见 `milestones/2026-06-18.md`。
 
 ## 通用规则
 

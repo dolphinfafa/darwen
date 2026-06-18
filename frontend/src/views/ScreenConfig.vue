@@ -1,3 +1,7 @@
+<!--
+  @deprecated 配置门槛页已下线（无路由引用）。ROCE 门槛已内嵌到 UniverseConfig（选股页），
+  筛选直接从 /universe 启动。文件保留以便回溯/回滚，请勿在新流程中引用。
+-->
 <template>
   <div class="page">
     <h1>新建筛选 · 第 2 步 · 配置门槛</h1>

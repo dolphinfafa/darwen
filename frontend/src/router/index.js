@@ -5,10 +5,12 @@ const routes = [
   // V2 三层漏斗筛选
   { path: '/', redirect: '/universe' },
   { path: '/universe', name: 'UniverseConfig', component: () => import('../views/UniverseConfig.vue') },
-  { path: '/config', name: 'ScreenConfig', component: () => import('../views/ScreenConfig.vue') },
+  // /config（ScreenConfig 配置门槛页）已下线：ROCE 门槛内嵌选股页，筛选直接从 /universe 启动
   { path: '/run/:runId', name: 'ScreenRun', component: () => import('../views/ScreenRun.vue') },
   { path: '/results/:runId', name: 'ScreenResults', component: () => import('../views/ScreenResults.vue') },
+  { path: '/funnel/:runId', name: 'FunnelResults', component: () => import('../views/FunnelResults.vue') },
   { path: '/my-runs', name: 'MyRuns', component: () => import('../views/MyRuns.vue') },
+  { path: '/my-watchlists', name: 'MyWatchlist', component: () => import('../views/MyWatchlist.vue') },
   { path: '/run/:runId/company/:companyId', name: 'CompanyDetailV2', component: () => import('../views/CompanyDetailV2.vue') },
   { path: '/account', name: 'AccountSettings', component: () => import('../views/AccountSettings.vue') },
   // 保留 admin

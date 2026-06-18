@@ -1,11 +1,29 @@
 # Darwen 项目进度总览
 
-> 最后更新：2026-05-12
-> 项目方向：V2 三层漏斗股票筛选系统（基于 Pulak Prasad《What I Learned About Investing from Darwin》）
+> 最后更新：2026-06-18
+> 项目方向：V2 股票筛选系统（基于 Pulak Prasad《What I Learned About Investing from Darwin》）
 
 ---
 
-## 项目状态：V2 完整工程 + 数据精修 + AI 真实调用全过（生产可用）
+## 项目状态：筛选重构为 ROCE → 稳健性 → 风险性 三层漏斗 + 分层人工 gate（2026-06-18）
+
+底层 V2 工程 + 数据精修 + AI 调用沿用 2026-05-13 生产可用版本。
+
+### 2026-06-18 三层漏斗重构（7 项产品需求）
+
+| 需求 | 状态 | 交付 |
+|---|---|---|
+| ROCE 配置（阈值 + 回溯年数 3/5/7/10） | ✅ | q_layer 按 N 年现算（每财年去重），N=5 与旧口径等价 |
+| 跳过"配置门槛"步骤 | ✅ | ROCE 内嵌选股页，`/config` 下线 |
+| 三层漏斗 ROCE→稳健→风险 + 分层人工 gate | ✅ | `funnel_v2.py` + advance/manual/funnel 端点；去掉估值层 |
+| 历史筛选页改股票池名称 | ✅ | `PATCH /v2/my-runs/{id}` + MyRuns 行内改名 |
+| 详情页仅历史 ROCE + 过滤原因 + 出处 | ✅ | CompanyDetailV2 瘦身 + evidence 出处接口 |
+| 详情页"进入我的股票池" | ✅ | `/v2/watchlists/add-company` + 入池面板 |
+| 新增"我的股票池"页面 | ✅ | watchlist 模型/API/MyWatchlist.vue |
+
+- AI 双层判定（稳健 4 类 + 风险 8 类）已接入 `analyze_layer`，mock 验证通过；真实调用待用户 key。
+- 5 个 Alembic 迁移（加列/加表可回滚）；旧 Q/R/V 引擎保留 deprecated。
+- 新建 pytest（15 用例，含 ROCE N=5 等价护栏）。详见 `milestones/2026-06-18.md`。
 
 ---
 
@@ -192,6 +210,7 @@ PRD 第 6 节"证据优先级"层次完整：法定披露可触发 REJECT，新�
 - `milestones/2026-05-11.md` — M2 ROCE 落地记录
 - `milestones/2026-05-12.md` — M3-M7 主线收官
 - `milestones/2026-05-13.md` — A 股 close 不复权数据修补
+- `milestones/2026-06-18.md` — 三层漏斗重构（ROCE→稳健→风险 / 分层 gate / 我的股票池）
 
 ---
 

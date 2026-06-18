@@ -24,7 +24,17 @@
       <tbody>
         <tr v-for="r in runs" :key="r.run_id" @click="openRun(r)">
           <td><code>#{{ r.run_id }}</code></td>
-          <td>{{ r.universe_name || '-' }}</td>
+          <td @click.stop>
+            <template v-if="editingId === r.run_id">
+              <input v-model="editName" class="edit-inp" @keyup.enter="saveRename(r)" @click.stop />
+              <button class="link" @click.stop="saveRename(r)">✓</button>
+              <button class="link" @click.stop="editingId = null">✕</button>
+            </template>
+            <template v-else>
+              {{ r.universe_name || '-' }}
+              <button class="link edit-btn" @click.stop="startEdit(r)" title="重命名">✎</button>
+            </template>
+          </td>
           <td>{{ r.market }}</td>
           <td>{{ r.as_of_date }}</td>
           <td>
@@ -57,12 +67,14 @@
 <script setup>
 import { onMounted, onUnmounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { getMyRuns } from '../api'
+import { getMyRuns, renameRun } from '../api'
 
 const router = useRouter()
 const runs = ref([])
 const loading = ref(true)
 const error = ref('')
+const editingId = ref(null)
+const editName = ref('')
 let timer = null
 
 async function refresh() {
@@ -90,10 +102,16 @@ function formatTime(iso) {
   return d.toLocaleString('zh-CN', { hour12: false })
 }
 function openRun(r) {
-  if (r.status === 'running') {
-    router.push({ name: 'ScreenRun', params: { runId: r.run_id } })
-  } else {
-    router.push({ name: 'ScreenResults', params: { runId: r.run_id } })
+  router.push({ name: 'FunnelResults', params: { runId: r.run_id } })
+}
+function startEdit(r) { editingId.value = r.run_id; editName.value = r.universe_name || '' }
+async function saveRename(r) {
+  try {
+    await renameRun(r.run_id, editName.value.trim() || r.universe_name)
+    editingId.value = null
+    await refresh()
+  } catch (e) {
+    error.value = e.response?.data?.detail || e.message
   }
 }
 
@@ -142,6 +160,9 @@ onUnmounted(() => { if (timer) clearInterval(timer) })
 .bucket.rev { background: #ffe4cc; color: #b04000; }
 .link {
   background: none; border: none; color: #4285f4;
-  cursor: pointer; padding: 0; font-size: 0.85rem;
+  cursor: pointer; padding: 0 4px; font-size: 0.85rem;
 }
+.edit-btn { opacity: 0.4; }
+.runs tbody tr:hover .edit-btn { opacity: 1; }
+.edit-inp { padding: 3px 8px; border: 1px solid #4285f4; border-radius: 5px; font-size: 0.85rem; width: 140px; }
 </style>

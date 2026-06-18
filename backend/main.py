@@ -9,6 +9,7 @@ from backend.api.user_settings import router as user_settings_router
 from backend.api.screening import router as screening_router
 from backend.api.backtest import router as backtest_router
 from backend.api.companies import router as companies_router
+from backend.api.watchlist import router as watchlist_router
 
 settings = get_settings()
 
@@ -33,6 +34,7 @@ app.include_router(user_settings_router)
 app.include_router(screening_router)
 app.include_router(backtest_router)
 app.include_router(companies_router)
+app.include_router(watchlist_router)
 
 
 @app.on_event("startup")

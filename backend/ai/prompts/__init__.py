@@ -8,6 +8,7 @@ from backend.ai.prompts.risk_filter import (
     SYSTEM_PROMPT,
     build_user_prompt,
 )
+from backend.ai.prompts.sturdiness_filter import STURDINESS_SYSTEM_PROMPT
 from backend.ai.prompts.version import PROMPT_VERSION
 
-__all__ = ["PROMPT_VERSION", "SYSTEM_PROMPT", "build_user_prompt"]
+__all__ = ["PROMPT_VERSION", "SYSTEM_PROMPT", "STURDINESS_SYSTEM_PROMPT", "build_user_prompt"]

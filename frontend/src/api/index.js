@@ -51,11 +51,20 @@ export const getScreenRunResults = (runId, perBucketLimit = 50) =>
 export const getCompanyDetail = (runId, companyId) =>
   api.get(`/v2/screen-run/${runId}/result/${companyId}`)
 
+// ───────── V2 三层漏斗（funnel_v2）─────────
+export const getFunnel = runId => api.get(`/v2/screen-run/${runId}/funnel`)
+export const advanceLayer = runId => api.post(`/v2/screen-run/${runId}/advance`)
+export const manualAction = (runId, company_id, action, note = null) =>
+  api.post(`/v2/screen-run/${runId}/manual`, { company_id, action, note })
+
 // ───────── V2 Reason Code 中文标签 ─────────
 export const getReasonCodeLabels = () => api.get('/v2/reason-codes/labels')
 
 // ───────── V2 我的筛选历史 ─────────
 export const getMyRuns = (limit = 50) => api.get('/v2/my-runs', { params: { limit } })
+export const renameRun = (runId, name) => api.patch(`/v2/my-runs/${runId}`, { name })
+export const getEvidence = (cid, docIds) =>
+  api.get(`/v2/company/${cid}/evidence`, { params: { doc_ids: docIds } })
 
 // ───────── V2 公司列表 + 行业（优化1） ─────────
 export const getCompanies = (params = {}) => api.get('/v2/companies', { params })
@@ -77,5 +86,14 @@ export const getAnalysisPrompt = (cid, runId = null) =>
 // 财报下载 URL（用 <a> 直接打开浏览器）
 export const filingUrl = (cid, year, form = '10-K') =>
   `/darwen/v2/company/${cid}/filing-url?year=${year}&form=${form}`
+
+// ───────── V2 我的股票池 watchlist ─────────
+export const getWatchlists = () => api.get('/v2/watchlists')
+export const createWatchlist = name => api.post('/v2/watchlists', { name })
+export const renameWatchlist = (id, name) => api.patch(`/v2/watchlists/${id}`, { name })
+export const deleteWatchlist = id => api.delete(`/v2/watchlists/${id}`)
+export const getWatchlistDetail = id => api.get(`/v2/watchlists/${id}`)
+export const removeWatchlistItem = (id, companyId) => api.delete(`/v2/watchlists/${id}/items/${companyId}`)
+export const addToWatchlist = body => api.post('/v2/watchlists/add-company', body)
 
 export default api

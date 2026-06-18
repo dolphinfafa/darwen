@@ -1,6 +1,6 @@
 <template>
   <div class="page">
-    <h1>新建筛选 · 第 1 步 · 选择股票池</h1>
+    <h1>新建筛选 · 选择股票池</h1>
     <p class="hint">从下表勾选公司进入股票池，或点"新增股票"输入 CIK/代码自动拉取。</p>
 
     <div class="toolbar">
@@ -74,9 +74,28 @@
     </table>
     <div v-else class="muted center">无匹配公司</div>
 
+    <fieldset class="roce-config">
+      <legend>ROCE 门槛（漏斗第一层）</legend>
+      <label>
+        最低 ROCE 阈值
+        <input type="number" step="0.01" min="0" max="1" v-model.number="roce.threshold" />
+        <span class="muted">≈ {{ (roce.threshold * 100).toFixed(0) }}%（默认 20%）</span>
+      </label>
+      <label>
+        回溯年数
+        <select v-model.number="roce.lookback_years">
+          <option :value="3">近 3 年</option>
+          <option :value="5">近 5 年</option>
+          <option :value="7">近 7 年</option>
+          <option :value="10">近 10 年</option>
+        </select>
+        <span class="muted">计算当前往前 N 年的 ROCE 中位数</span>
+      </label>
+    </fieldset>
+
     <div class="actions">
-      <button class="btn-primary" :disabled="!selected.size" @click="next">
-        下一步：配置门槛 →（{{ selected.size }} 家）
+      <button class="btn-primary" :disabled="!selected.size || launching" @click="start">
+        {{ launching ? '启动中…' : `开始筛选 →（${selected.size} 家）` }}
       </button>
     </div>
 
@@ -92,7 +111,7 @@
 <script setup>
 import { computed, onMounted, ref, reactive } from 'vue'
 import { useRouter } from 'vue-router'
-import { getCompanies, getIndustries } from '../api'
+import { getCompanies, getIndustries, createScreenRun } from '../api'
 import AddCompanyModal from '../components/AddCompanyModal.vue'
 
 const router = useRouter()
@@ -102,6 +121,7 @@ const loading = ref(false)
 const error = ref('')
 const showAddModal = ref(false)
 const selected = ref(new Set())  // 选中的 company_id
+const launching = ref(false)
 
 const filters = reactive({
   market: 'US',  // 默认美股
@@ -109,7 +129,13 @@ const filters = reactive({
   search: '',
 })
 
-// 从 sessionStorage 恢复（用户在 ScreenConfig 返回后保留选择）
+// ROCE 门槛配置（漏斗第一层，内嵌于本页，取代独立的"配置门槛"步骤）
+const roce = reactive({
+  threshold: 0.20,
+  lookback_years: 5,
+})
+
+// 从 sessionStorage 恢复选中（刷新/返回后保留股票池选择）
 const STORAGE_KEY = 'darwen_universe_selected'
 
 function loadSelection() {
@@ -185,11 +211,24 @@ function onCompanyAdded(companyId) {
   reload()
 }
 
-function next() {
-  // 自定义池
-  const ids = [...selected.value]
-  sessionStorage.setItem('darwen_custom_ids', JSON.stringify(ids))
-  router.push({ name: 'ScreenConfig', query: { universe: 'custom' } })
+async function start() {
+  if (!selected.value.size || launching.value) return
+  launching.value = true
+  error.value = ''
+  try {
+    const { data } = await createScreenRun({
+      universe_name: '自定义筛选',
+      company_ids: [...selected.value],
+      roce_threshold: roce.threshold,
+      roce_lookback_years: roce.lookback_years,
+      // 分层人工 gate：每层跑完暂停等复核，在漏斗页放行/剔除后再推进下一层
+      auto_advance: false,
+    })
+    router.push({ name: 'FunnelResults', params: { runId: data.run_id } })
+  } catch (e) {
+    error.value = e.response?.data?.detail || e.message
+    launching.value = false
+  }
 }
 
 onMounted(() => {
@@ -248,5 +287,14 @@ onMounted(() => {
 .instrument {
   font-size: 0.75rem; color: #888;
 }
-.actions { margin-top: 24px; text-align: right; }
+.actions { margin-top: 16px; text-align: right; }
+
+.roce-config {
+  margin-top: 24px; border: 1px solid #e0e0e8; border-radius: 10px;
+  padding: 14px 18px; display: flex; gap: 32px; flex-wrap: wrap; align-items: center;
+}
+.roce-config legend { font-weight: 600; color: #444; padding: 0 6px; }
+.roce-config label { display: flex; align-items: center; gap: 8px; font-size: 0.9rem; color: #444; }
+.roce-config input[type="number"] { width: 80px; padding: 5px 8px; border: 1px solid #ccc; border-radius: 6px; }
+.roce-config select { padding: 5px 8px; border: 1px solid #ccc; border-radius: 6px; }
 </style>

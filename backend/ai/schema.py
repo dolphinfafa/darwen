@@ -15,7 +15,7 @@ from pydantic import BaseModel, Field, field_validator
 SeverityLevel = Literal["low", "medium", "high"]
 OverallAction = Literal["PASS", "REVIEW", "REJECT", "MONITOR"]
 
-# PRD 第 4.5 节定义的 9 类风险标签
+# 风险标签全集（原 9 类 + funnel_v2 新增 3 类）
 KNOWN_LABELS = {
     "governance_risk",
     "accounting_risk",
@@ -26,6 +26,28 @@ KNOWN_LABELS = {
     "supplier_concentration_risk",
     "disruption_risk",
     "minority_shareholder_risk",
+    "management_instability",       # 管理团队不稳定（稳健层）
+    "speculative_guidance_risk",    # 靠预测未来（风险层）
+    "stakeholder_unfriendly",       # 对员工/客户/供应商不友好（风险层）
+}
+
+# funnel_v2 分层标签集：稳健层判定"是否具备稳健特质"（标签=不稳健信号），
+# 风险层判定"是否存在风险红旗"。竞争壁垒/无负债现金流由规则判定，不在 AI 标签内。
+STURDINESS_LABELS = {
+    "customer_concentration_risk",   # 客户不够多元
+    "supplier_concentration_risk",   # 供应商不够多元
+    "disruption_risk",               # 行业变化快
+    "management_instability",        # 管理团队不稳定
+}
+RISK_LABELS = {
+    "governance_risk",               # 管理层不诚信（治理）
+    "accounting_risk",               # 管理层不诚信（会计/重述）
+    "regulatory_risk",               # 管理层不诚信（监管处罚）
+    "turnaround_risk",               # 重大转型
+    "serial_acquirer_risk",          # 疯狂并购
+    "speculative_guidance_risk",     # 靠预测未来
+    "stakeholder_unfriendly",        # 对员工/客户/供应商不友好
+    "minority_shareholder_risk",     # 对少数股东不友好
 }
 
 

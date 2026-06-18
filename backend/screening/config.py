@@ -13,7 +13,8 @@ class ScreenConfig:
     """筛选配置。"""
     # Q 层
     roce_threshold: float = 0.20        # Q3 门槛
-    roce_count_required_5y: int = 4     # 5 年中 ≥ threshold 的年数
+    roce_lookback_years: int = 5        # ROCE 回溯窗口（用户可配 3/5/7/10；N=5 等价旧 5Y 口径）
+    roce_count_required_5y: int = 4     # 5 年中 ≥ threshold 的年数（旧口径，N≠5 时按 ⌈0.8N⌉ 现算）
     roce_count_required_10y: int = 8    # 10 年中 ≥ threshold 的年数（Q4 强通过）
     min_list_years: int = 5             # Q6 上市年限
     min_fiscal_years: int = 5           # Q1 财年数

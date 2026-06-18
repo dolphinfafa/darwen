@@ -21,6 +21,11 @@ class RiskAIResult(Base):
     )
     asof_date: Mapped[date] = mapped_column(Date, index=True)
 
+    layer: Mapped[str | None] = mapped_column(
+        String(20), index=True,
+        comment="sturdiness|risk —— funnel_v2 哪一层的 AI 判定；NULL=旧 R 层",
+    )
+
     ai_provider: Mapped[str] = mapped_column(
         Enum("chatgpt", "minimax", name="ai_provider_result_enum")
     )

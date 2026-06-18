@@ -2,11 +2,37 @@
 
 本文档定义 Darwen V2 重构剩余里程碑（M2-M7）的执行顺序、关键依赖与验收标准。
 
-**当前状态**：V2 完整工程闭环 + 全部数据修补 + AI 真实调用全过（截至 2026-05-13）。
+**当前状态**：筛选已重构为 **ROCE → 稳健性 → 风险性 三层漏斗 + 分层人工 gate**（2026-06-18）；
+底层 V2 工程闭环 + 数据修补 + AI 调用沿用 2026-05-13 版本。
 
 工作日志：
 - `milestones/2026-05-12.md` — M1-M7 主线 + 全量回填 (12 章)
 - `milestones/2026-05-13.md` — A 股 close / 金融股 / TSLA 财年 / E6 / 中文标签 / M4 真实 AI (12 章)
+- `milestones/2026-06-18.md` — **三层漏斗重构**（ROCE 可配置 / 分层 gate / AI 双层 / 我的股票池 / 详情页瘦身，11 章）
+
+### 2026-06-18 架构演进（现行筛选流程，优先于下方历史路线图）
+
+筛选流程已从 Q/R/V（质量/风险/估值）改为 **ROCE → 稳健性 → 风险性**：
+
+```
+选股票池(内嵌 ROCE 阈值 + 回溯年数 3/5/7/10)
+  → ① ROCE 门槛(规则,按 N 年现算)
+  → ② 稳健性(规则:无负债现金流 + AI:客户/供应商/行业/管理层)
+  → ③ 风险性(AI:诚信/转型/并购/靠预测/利益相关者)
+  → 入选
+```
+
+- 引擎 `screening/funnel_v2.py`：存活集 = `screen_result.rejected_at_layer IS NULL`；每层暂停
+  `awaiting_review` 等人工放行/剔除（`POST /v2/screen-run/{id}/manual`），再 `/advance` 推进；
+  `auto_advance=True` 连跑；risk 复核后 `finalize_run` 定稿。`GET /v2/screen-run/{id}/funnel` 出漏斗数据。
+- AI 走 `ai/orchestrator.analyze_layer(layer=sturdiness|risk)`，prompt 分 `prompts/sturdiness_filter`（4 类）
+  / `prompts/risk_filter`（8 类）；`risk_ai_result.layer` 区分；融合规则保守（REJECT 需法定披露）。
+- 新增"我的股票池"：`api/watchlist.py` + `models/watchlist.py` + `MyWatchlist.vue`。
+- 前端：`FunnelResults.vue`（漏斗页 + gate）替代 `ScreenResults` 角色；`UniverseConfig` 内嵌 ROCE 配置；
+  `CompanyDetailV2` 瘦身为「历史 ROCE + 过滤原因 + 出处」+ 入池按钮；`MyRuns` 行内改名。
+- 迁移：`funnel_v2_layers` / `add_risk_ai_layer` / `add_watchlist`（均加列/加表，可回滚）。
+- **旧 Q/R/V**（`screening/funnel.py`/`v_layer.py`、`ScreenConfig.vue`、`ScreenResults.vue`）保留
+  **deprecated** 未删除。下方 M2-M7 章节为**历史路线图**（旧架构），保留供追溯。
 
 系统端到端**生产可用**：
 

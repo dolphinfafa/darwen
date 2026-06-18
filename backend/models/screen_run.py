@@ -2,7 +2,7 @@
 """筛选任务主表"""
 from datetime import date, datetime
 
-from sqlalchemy import String, DateTime, Date, ForeignKey, Integer, BigInteger, Enum, Text, func
+from sqlalchemy import String, DateTime, Date, ForeignKey, Integer, BigInteger, Boolean, Enum, Text, func
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.dialects.mysql import JSON
 
@@ -45,3 +45,17 @@ class ScreenRun(Base):
     progress_count: Mapped[int] = mapped_column(Integer, default=0)
     current_company_name: Mapped[str | None] = mapped_column(String(200))
     error_msg: Mapped[str | None] = mapped_column(Text)
+
+    # 三层漏斗分层执行（funnel_v2）。用 String 而非 Enum，便于无锁加列/未来扩层
+    current_layer: Mapped[str | None] = mapped_column(
+        String(20), default="roce",
+        comment="roce|sturdiness|risk|done —— 漏斗当前推进到哪层",
+    )
+    layer_status: Mapped[str | None] = mapped_column(
+        String(20), default="running",
+        comment="running|awaiting_review|completed|failed —— 当前层执行状态",
+    )
+    auto_advance: Mapped[bool] = mapped_column(
+        Boolean, default=False,
+        comment="True=三层连跑不暂停；False=每层跑完停下等人工 gate",
+    )

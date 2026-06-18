@@ -41,7 +41,7 @@ from backend.models.text_document import TextDocument
 from backend.models.user import User
 
 from backend.ai.crypto import InvalidToken, decrypt_api_key
-from backend.ai.prompts import PROMPT_VERSION, SYSTEM_PROMPT, build_user_prompt
+from backend.ai.prompts import PROMPT_VERSION, SYSTEM_PROMPT, STURDINESS_SYSTEM_PROMPT, build_user_prompt
 from backend.ai.provider_base import (
     AIAuthError,
     AIProvider,
@@ -199,6 +199,7 @@ def _legal_doc_ids(docs: list[dict]) -> set[str]:
 
 def _call_with_retry(
     provider: AIProvider,
+    system_prompt: str,
     user_prompt: str,
     *,
     timeout: float = 20.0,
@@ -215,7 +216,7 @@ def _call_with_retry(
     for attempt in range(2):
         t0 = time.monotonic()
         try:
-            raw = provider.call(SYSTEM_PROMPT, user_prompt, timeout=timeout, temperature=temperature)
+            raw = provider.call(system_prompt, user_prompt, timeout=timeout, temperature=temperature)
         except (AITimeoutError, AIAuthError, AIProviderError) as e:
             elapsed = int((time.monotonic() - t0) * 1000)
             total_ms += elapsed
@@ -272,7 +273,10 @@ def _fuse_action(
 
 # ---------------- 入口 ----------------
 
-def analyze_risk(
+_LAYER_SYSTEM = {"sturdiness": STURDINESS_SYSTEM_PROMPT, "risk": SYSTEM_PROMPT}
+
+
+def analyze_layer(
     db: Session,
     *,
     company_id: str,
@@ -280,11 +284,13 @@ def analyze_risk(
     user_id: int,
     run_id: Optional[int],
     rule_triggered: dict,
+    layer: str = "risk",
     provider_override: Optional[str] = None,
     timeout: float = 20.0,
     temperature: float = 0.1,
 ) -> AIResult | RuleOnlyResult:
-    """编排单股 AI 风险分析。"""
+    """编排单股某一层（sturdiness|risk）的 AI 判定。"""
+    system_prompt = _LAYER_SYSTEM.get(layer, SYSTEM_PROMPT)
     user = db.get(User, user_id)
     if user is None:
         return RuleOnlyResult(reason="USER_NOT_FOUND")
@@ -314,12 +320,12 @@ def analyze_risk(
         rule_triggered=rule_triggered,
     )
     prompt_hash = hashlib.sha256(
-        (SYSTEM_PROMPT + user_prompt).encode("utf-8")
+        (system_prompt + user_prompt).encode("utf-8")
     ).hexdigest()
 
     # 调主 provider
     parsed, raw, err, latency_ms = _call_with_retry(
-        provider, user_prompt, timeout=timeout, temperature=temperature,
+        provider, system_prompt, user_prompt, timeout=timeout, temperature=temperature,
     )
 
     # 主失败 → 尝试备用 provider
@@ -327,7 +333,7 @@ def analyze_risk(
         fallback = _build_fallback_provider(user, primary_name)
         if fallback is not None:
             parsed2, raw2, err2, latency2 = _call_with_retry(
-                fallback, user_prompt, timeout=timeout, temperature=temperature,
+                fallback, system_prompt, user_prompt, timeout=timeout, temperature=temperature,
             )
             if parsed2 is not None:
                 parsed = parsed2
@@ -345,6 +351,7 @@ def analyze_risk(
             company_id=company_id,
             run_id=run_id,
             asof_date=asof_date,
+            layer=layer,
             ai_provider=provider.name,
             model_name=provider.model,
             prompt_version=PROMPT_VERSION,
@@ -375,6 +382,7 @@ def analyze_risk(
         company_id=company_id,
         run_id=run_id,
         asof_date=asof_date,
+        layer=layer,
         ai_provider=provider.name,
         model_name=provider.model,
         prompt_version=PROMPT_VERSION,
@@ -390,3 +398,9 @@ def analyze_risk(
     db.commit()
     db.refresh(row)
     return AIResult(ai_result_id=row.result_id, overall_action=fused_action, output=parsed)
+
+
+def analyze_risk(db: Session, **kwargs) -> AIResult | RuleOnlyResult:
+    """兼容旧 R 层入口：等价 analyze_layer(layer='risk')。"""
+    kwargs.pop("layer", None)
+    return analyze_layer(db, layer="risk", **kwargs)

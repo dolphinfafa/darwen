@@ -21,11 +21,18 @@ from backend.models.screen_run import ScreenRun
 from backend.models.security import Security
 from backend.models.user import User
 from backend.schemas.v2 import (
+    AdvanceResponse,
     CompanyDetailResponse,
     CompanyListItem,
     CompanyProfileResponse,
+    FunnelCompany,
+    FunnelLayer,
+    FunnelResponse,
     IndustryItem,
+    EvidenceDoc,
+    ManualActionRequest,
     MetricLineageOut,
+    RunRenameRequest,
     RiskAIDetailOut,
     RiskAILabelOut,
     ScreenResultBucketResponse,
@@ -38,7 +45,7 @@ from backend.schemas.v2 import (
 )
 from fastapi.responses import RedirectResponse
 from backend.screening.config import ScreenConfig
-from backend.screening.funnel import _evaluate_one_company
+from backend.screening import funnel_v2
 from backend.screening.reason_labels import all_labels, lookup
 from backend.services.auth import get_current_user
 
@@ -279,6 +286,7 @@ def create_screen_run(
 
     config = ScreenConfig(
         roce_threshold=body.roce_threshold,
+        roce_lookback_years=body.roce_lookback_years,
         risk_sensitivity=body.risk_sensitivity,
         valuation_mode=body.valuation_mode,
         ai_provider=body.ai_provider,
@@ -296,120 +304,18 @@ def create_screen_run(
         config_snapshot=config_snapshot,
         status="running",
         total_count=len(company_ids),
+        current_layer="roce",
+        layer_status="running",
+        auto_advance=body.auto_advance,
     )
     db.add(run)
     db.commit()
     db.refresh(run)
 
-    # 后台异步执行
-    bg.add_task(
-        _execute_run_async,
-        run.run_id, company_ids, config, body.as_of_date, user.id,
-    )
+    # 后台执行：三层漏斗 v2 从 ROCE 层开始（auto_advance 决定是否连跑）
+    bg.add_task(funnel_v2.start_run, run.run_id)
 
     return ScreenRunCreateResponse(run_id=run.run_id, status=run.status, total=len(company_ids))
-
-
-def _execute_run_async(
-    run_id: int,
-    company_ids: list[str],
-    config: ScreenConfig,
-    as_of_date: date,
-    user_id: int,
-) -> None:
-    """后台任务：跑漏斗并实时刷新 screen_run 进度。
-
-    每家公司处理后立即 commit 一次 ScreenResult + 进度字段，
-    前端轮询可看到 progress_count + current_company_name 实时变化。
-    """
-    from datetime import datetime
-    db = SessionLocal()
-    try:
-        passed = rejected = review = errors = 0
-        for idx, cid in enumerate(company_ids, 1):
-            company = db.get(Company, cid)
-            if company is None:
-                # 仍更新进度（跳过的也算处理过）
-                _update_run_progress(db, run_id, idx, None,
-                                     passed, rejected, review)
-                continue
-
-            # 1. 先标记"当前正在评估 X"
-            _update_run_progress(db, run_id, idx - 1, company.name,
-                                 passed, rejected, review)
-
-            try:
-                params = _evaluate_one_company(
-                    db, company, as_of_date, config,
-                    user_id=user_id, run_id=run_id,
-                )
-                row = ScreenResult(run_id=run_id, **params)
-                db.add(row)
-                if params["status"] == "Rejected":
-                    rejected += 1
-                elif params["status"] == "Review":
-                    review += 1
-                else:
-                    passed += 1
-                # 2. 提交单家结果 + 刷新累计计数
-                db.commit()
-            except Exception as e:  # noqa: BLE001
-                db.rollback()
-                errors += 1
-                log.exception("screening failed for %s: %s", cid, e)
-
-            # 3. 进度计数 +1
-            _update_run_progress(db, run_id, idx, company.name,
-                                 passed, rejected, review)
-
-        # 4. 终态
-        from sqlalchemy import update as sa_update
-        db.execute(
-            sa_update(ScreenRun)
-            .where(ScreenRun.run_id == run_id)
-            .values(
-                status="completed" if errors == 0 else "failed",
-                finished_at=datetime.now(),
-                passed_count=passed,
-                rejected_count=rejected,
-                review_count=review,
-                progress_count=len(company_ids),
-                current_company_name=None,
-                error_msg=f"{errors} errors" if errors else None,
-            )
-        )
-        db.commit()
-    finally:
-        db.close()
-
-
-def _update_run_progress(
-    db: Session,
-    run_id: int,
-    progress: int,
-    current_company_name: str | None,
-    passed: int,
-    rejected: int,
-    review: int,
-) -> None:
-    """用独立 UPDATE 刷新 screen_run 进度字段并立即 commit。
-
-    用 SQL UPDATE 而非 ORM session 修改，避免与 _evaluate_one_company 内的
-    db.get/db.add 冲突；commit 自身释放表级锁。
-    """
-    from sqlalchemy import update as sa_update
-    db.execute(
-        sa_update(ScreenRun)
-        .where(ScreenRun.run_id == run_id)
-        .values(
-            progress_count=progress,
-            current_company_name=current_company_name,
-            passed_count=passed,
-            rejected_count=rejected,
-            review_count=review,
-        )
-    )
-    db.commit()
 
 
 @router.get("/screen-run/{run_id}", response_model=ScreenRunStatusResponse)
@@ -439,6 +345,9 @@ def get_screen_run(
         current_company_name=run.current_company_name,
         config_snapshot=run.config_snapshot,
         error_msg=run.error_msg,
+        current_layer=run.current_layer,
+        layer_status=run.layer_status,
+        auto_advance=bool(run.auto_advance),
     )
 
 
@@ -524,6 +433,180 @@ def get_screen_results(
             )
 
     return ScreenResultBucketResponse(run_id=run_id, counts=counts, rows=rows)
+
+
+# ---------------- 三层漏斗（funnel_v2）----------------
+
+_LAYER_LABELS = {"roce": "ROCE 门槛", "sturdiness": "稳健性筛选", "risk": "风险性筛选"}
+_LAYER_ORDER = ("roce", "sturdiness", "risk")
+
+
+def _to_funnel_company(sr, name, market, industry_name, ticker) -> FunnelCompany:
+    return FunnelCompany(
+        company_id=sr.company_id,
+        ticker=ticker,
+        name=name,
+        market=market,
+        industry_name=industry_name,
+        reason_codes=sr.reason_codes or [],
+        metrics_snapshot=sr.metrics_snapshot or {},
+        layer_results=sr.layer_results or {},
+        manual_action=sr.manual_action,
+    )
+
+
+@router.get("/screen-run/{run_id}/funnel", response_model=FunnelResponse)
+def get_funnel(
+    run_id: int,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """三层漏斗视图：每层 in/out 计数 + 各层被过滤公司列表 + 当前存活/入选。"""
+    run = db.get(ScreenRun, run_id)
+    if run is None:
+        raise HTTPException(404, "run not found")
+    if run.user_id != user.id and not user.is_admin:
+        raise HTTPException(403, "not your run")
+
+    q = (
+        select(ScreenResult, Company, Security)
+        .join(Company, ScreenResult.company_id == Company.company_id)
+        .join(Security, Security.company_id == Company.company_id, isouter=True)
+        .where(ScreenResult.run_id == run_id)
+        .order_by(ScreenResult.result_id)
+    )
+    seen: set[str] = set()
+    rejected_by_layer: dict[str, list[FunnelCompany]] = {l: [] for l in _LAYER_ORDER}
+    survivors: list[FunnelCompany] = []
+    for sr, c, sec in db.execute(q).all():
+        if sr.company_id in seen:
+            continue
+        seen.add(sr.company_id)
+        fc = _to_funnel_company(sr, c.name, c.market, c.industry_name, sec.ticker if sec else None)
+        if sr.rejected_at_layer in rejected_by_layer:
+            rejected_by_layer[sr.rejected_at_layer].append(fc)
+        else:
+            survivors.append(fc)
+
+    cur = run.current_layer or "roce"
+    done = (cur == "done") or (run.status == "completed")
+    cur_idx = _LAYER_ORDER.index(cur) if cur in _LAYER_ORDER else len(_LAYER_ORDER)
+
+    layers: list[FunnelLayer] = []
+    prev_input = run.total_count
+    for i, l in enumerate(_LAYER_ORDER):
+        rej = len(rejected_by_layer[l])
+        passed = prev_input - rej
+        if done or i < cur_idx:
+            state = "completed"
+        elif i == cur_idx:
+            state = run.layer_status or "running"
+        else:
+            state = "pending"
+        layers.append(FunnelLayer(
+            layer=l, label=_LAYER_LABELS[l], state=state,
+            input_count=prev_input, passed_count=passed, rejected_count=rej,
+            rejected=rejected_by_layer[l],
+        ))
+        prev_input = passed
+
+    return FunnelResponse(
+        run_id=run_id,
+        run_status=run.status,
+        current_layer=run.current_layer,
+        layer_status=run.layer_status,
+        auto_advance=bool(run.auto_advance),
+        total=run.total_count,
+        layers=layers,
+        survivors=survivors,
+    )
+
+
+@router.post("/screen-run/{run_id}/advance", response_model=AdvanceResponse)
+def advance_layer(
+    run_id: int,
+    bg: BackgroundTasks,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """推进到下一层（后台执行）。仅当前层处于 awaiting_review 时可调用。"""
+    run = db.get(ScreenRun, run_id)
+    if run is None:
+        raise HTTPException(404, "run not found")
+    if run.user_id != user.id and not user.is_admin:
+        raise HTTPException(403, "not your run")
+    if run.layer_status != "awaiting_review":
+        raise HTTPException(400, "当前层未处于待推进状态")
+    nxt = funnel_v2._NEXT.get(run.current_layer or "roce")
+    if nxt is None:
+        raise HTTPException(400, "无法推进")
+    run.layer_status = "running"
+    db.add(run)
+    db.commit()
+    if nxt == "done":
+        # risk 层复核完成 → 定稿（存活者置入选 + completed）
+        bg.add_task(funnel_v2.finalize_run, run_id)
+    else:
+        bg.add_task(funnel_v2.run_from, run_id, nxt)
+    return AdvanceResponse(run_id=run_id, next_layer=nxt, layer_status="running")
+
+
+@router.post("/screen-run/{run_id}/manual")
+def manual_action(
+    run_id: int,
+    body: ManualActionRequest,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """人工 gate：放行当前层被过滤的 / 剔除当前层已通过的，并持久化。"""
+    from datetime import datetime
+    run = db.get(ScreenRun, run_id)
+    if run is None:
+        raise HTTPException(404, "run not found")
+    if run.user_id != user.id and not user.is_admin:
+        raise HTTPException(403, "not your run")
+    if run.layer_status != "awaiting_review":
+        raise HTTPException(400, "仅在某层暂停待复核时可人工干预")
+    layer = run.current_layer
+    sr = db.execute(
+        select(ScreenResult).where(
+            (ScreenResult.run_id == run_id) & (ScreenResult.company_id == body.company_id)
+        ).limit(1)
+    ).scalar()
+    if sr is None:
+        raise HTTPException(404, "company not in this run")
+
+    if body.action == "force_pass":
+        if sr.rejected_at_layer != layer:
+            raise HTTPException(400, "该公司未被当前层过滤，无法放行")
+        sr.rejected_at_layer = None
+        sr.status = "Review"
+    else:  # force_reject
+        if sr.rejected_at_layer is not None:
+            raise HTTPException(400, "该公司已不在存活集，无法剔除")
+        sr.rejected_at_layer = layer
+        sr.status = "Rejected"
+    sr.manual_action = {
+        "layer": layer, "action": body.action,
+        "note": body.note, "at": datetime.now().isoformat(),
+    }
+    db.add(sr)
+    db.commit()
+
+    # 重新统计存活/出局并写回 run
+    rows = db.execute(
+        select(ScreenResult.rejected_at_layer).where(ScreenResult.run_id == run_id)
+    ).all()
+    alive = sum(1 for r in rows if r.rejected_at_layer is None)
+    rejected = sum(1 for r in rows if r.rejected_at_layer is not None)
+    run.passed_count = alive
+    run.rejected_count = rejected
+    db.add(run)
+    db.commit()
+    return {
+        "ok": True, "company_id": body.company_id,
+        "rejected_at_layer": sr.rejected_at_layer, "alive": alive, "rejected": rejected,
+    }
 
 
 # ---------------- 单股详情 ----------------
@@ -687,6 +770,8 @@ def get_company_detail(
             metrics_snapshot=sr.metrics_snapshot or {},
             ai_result_id=sr.ai_result_id,
         ),
+        rejected_at_layer=sr.rejected_at_layer,
+        layer_results=sr.layer_results or {},
         roce_series=roce_series,
         leverage_series=leverage_series,
         cash_quality_series=cq_series,
@@ -694,4 +779,63 @@ def get_company_detail(
         valuation_snapshot=val_snap,
         ai_result=ai_out,
         lineage=lineage_out,
+    )
+
+
+@router.get("/company/{company_id}/evidence", response_model=list[EvidenceDoc])
+def get_evidence(
+    company_id: str,
+    doc_ids: str = Query(..., description="逗号分隔的 doc_xxx（AI evidence_doc_ids）"),
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """把 AI 原因的 evidence_doc_ids 解析为可读出处（标题 + 来源 + 链接）。"""
+    from backend.models.text_document import TextDocument
+    raw_ids = []
+    for x in doc_ids.split(","):
+        x = x.strip().replace("doc_", "")
+        if x.isdigit():
+            raw_ids.append(int(x))
+    if not raw_ids:
+        return []
+    rows = db.execute(
+        select(TextDocument).where(
+            TextDocument.doc_id.in_(raw_ids),
+            TextDocument.company_id == company_id,
+        )
+    ).scalars().all()
+    return [
+        EvidenceDoc(
+            doc_id=f"doc_{d.doc_id}", title=d.title or "",
+            source_type=d.source_type, doc_type=d.doc_type, url=d.content_url,
+            published_at=d.published_at.isoformat() if d.published_at else None,
+        )
+        for d in rows
+    ]
+
+
+@router.patch("/my-runs/{run_id}", response_model=ScreenRunSummary)
+def rename_run(
+    run_id: int,
+    body: RunRenameRequest,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """重命名筛选批次（universe_name）。仅本人可改。"""
+    run = db.get(ScreenRun, run_id)
+    if run is None:
+        raise HTTPException(404, "run not found")
+    if run.user_id != user.id and not user.is_admin:
+        raise HTTPException(403, "not your run")
+    run.universe_name = body.name.strip()
+    db.add(run)
+    db.commit()
+    db.refresh(run)
+    return ScreenRunSummary(
+        run_id=run.run_id, universe_name=run.universe_name, market=run.market,
+        as_of_date=run.as_of_date, status=run.status, started_at=run.started_at,
+        finished_at=run.finished_at, total_count=run.total_count,
+        progress_count=run.progress_count, passed_count=run.passed_count,
+        rejected_count=run.rejected_count, review_count=run.review_count,
+        current_company_name=run.current_company_name,
     )

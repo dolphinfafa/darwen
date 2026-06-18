@@ -14,6 +14,7 @@ from backend.models.screen_result import ScreenResult
 from backend.models.metric_periodic import MetricPeriodic
 from backend.models.metric_lineage_log import MetricLineageLog
 from backend.models.ingest_task import IngestTask
+from backend.models.watchlist import Watchlist, WatchlistItem
 
 __all__ = [
     "Company",
@@ -29,4 +30,6 @@ __all__ = [
     "MetricPeriodic",
     "MetricLineageLog",
     "IngestTask",
+    "Watchlist",
+    "WatchlistItem",
 ]

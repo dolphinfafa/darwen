@@ -52,7 +52,23 @@ class ScreenResult(Base):
     )
     rank: Mapped[int | None] = mapped_column(Integer)
 
+    # 三层漏斗（funnel_v2）：ROCE → 稳健性 → 风险性
+    rejected_at_layer: Mapped[str | None] = mapped_column(
+        String(20),
+        index=True,
+        comment="roce|sturdiness|risk —— 在哪层被过滤；NULL=当前存活/最终入选",
+    )
+    layer_results: Mapped[dict | None] = mapped_column(
+        JSON,
+        comment="{roce:{passed,reason_codes,metrics}, sturdiness:{...}, risk:{...}} 逐层结果",
+    )
+    manual_action: Mapped[dict | None] = mapped_column(
+        JSON,
+        comment="人工干预 {layer, action: force_pass|force_reject, note, at}",
+    )
+
     __table_args__ = (
         Index("ix_screen_result_run_status", "run_id", "status"),
         Index("ix_screen_result_company_run", "company_id", "run_id"),
+        Index("ix_screen_result_run_layer", "run_id", "rejected_at_layer"),
     )

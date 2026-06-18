@@ -86,6 +86,16 @@ REASON_LABELS: dict[str, LabelEntry] = {
     "AI_SUPPLIER_CONCENTRATION_RISK": {"label": "AI:供应商集中", "desc": "AI 识别：供应商集中度风险", "layer": "AI", "severity": "warning"},
     "AI_DISRUPTION_RISK": {"label": "AI:行业断裂", "desc": "AI 识别：技术或监管颠覆护城河", "layer": "AI", "severity": "warning"},
     "AI_MINORITY_SHAREHOLDER_RISK": {"label": "AI:少数股东", "desc": "AI 识别：少数股东不友好行为", "layer": "AI", "severity": "warning"},
+    "AI_MANAGEMENT_INSTABILITY": {"label": "AI:管理层不稳", "desc": "AI 识别：核心高管频繁变动 / 关键人依赖 / 继任缺失", "layer": "AI", "severity": "warning"},
+    "AI_SPECULATIVE_GUIDANCE_RISK": {"label": "AI:靠预测未来", "desc": "AI 识别：盈利严重依赖远期指引 / 未兑现承诺 / 故事驱动估值", "layer": "AI", "severity": "warning"},
+    "AI_STAKEHOLDER_UNFRIENDLY": {"label": "AI:不善待相关方", "desc": "AI 识别：对员工/客户/供应商不友好（劳动纠纷、欺客、压榨供应商、声誉事件）", "layer": "AI", "severity": "warning"},
+
+    # ============ funnel_v2 稳健层 / 风险层 ============
+    "STURDINESS_PASS": {"label": "稳健通过", "desc": "稳健层：无负债有充裕现金流（规则）+ 无中/高不稳健 AI 信号", "layer": "R", "severity": "info"},
+    "STURDINESS_HIGH_DEBT": {"label": "净负债过高", "desc": "稳健层：net_debt/EBIT 超阈值（违反'无负债'原则）", "layer": "R", "severity": "error"},
+    "STURDINESS_WEAK_COVERAGE": {"label": "偿债能力弱", "desc": "稳健层：interest_coverage 低于阈值", "layer": "R", "severity": "error"},
+    "STURDINESS_NEGATIVE_FCF": {"label": "现金流持续为负", "desc": "稳健层：近 5 年 FCF<0 年数超阈值（违反'有现金流'原则）", "layer": "R", "severity": "error"},
+    "RISK_PENDING_AI": {"label": "待AI判定", "desc": "风险层：未启用 AI 或未绑定 key，暂占位放行，待人工/AI 复核", "layer": "META", "severity": "info"},
 }
 
 
