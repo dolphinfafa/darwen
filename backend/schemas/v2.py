@@ -50,7 +50,7 @@ class ScreenRunCreateRequest(BaseModel):
     universe_name: Optional[str] = "custom"
     company_ids: Optional[list[str]] = None     # 显式公司列表（与 preset 二选一）
     preset: Optional[str] = None                # us_default / cn_default
-    as_of_date: date = Field(default_factory=lambda: date(2024, 12, 31))
+    as_of_date: date = Field(default_factory=lambda: date(2025, 12, 31))
 
     # 配置（透传到 ScreenConfig）
     risk_sensitivity: Literal["strict", "standard", "loose"] = "standard"

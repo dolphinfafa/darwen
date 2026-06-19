@@ -457,7 +457,7 @@ def persist_all_metrics_for_company(
     db: Session,
     company_id: str,
     *,
-    year_range: tuple[int, int] = (2014, 2024),
+    year_range: tuple[int, int] = (2014, 2025),  # 上限=最近完整财年，每年初手动更新
     market: Optional[str] = None,
     write_lineage: bool = True,
     valuation_asof: Optional[date] = None,
@@ -552,7 +552,7 @@ persist_roce_for_company = persist_all_metrics_for_company
 def persist_all_metrics_bulk(
     company_ids: Optional[list[str]] = None,
     *,
-    year_range: tuple[int, int] = (2014, 2024),
+    year_range: tuple[int, int] = (2014, 2025),  # 上限=最近完整财年，每年初手动更新
     log_every: int = 25,
 ) -> dict:
     """批量回填多家公司。company_ids 为 None 时跑全部 company。"""
