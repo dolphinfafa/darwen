@@ -1,19 +1,30 @@
-# Darwen V2.0 PRD — 三层漏斗股票筛选系统
+# Darwen V2 PRD（v2.1）— 三层漏斗股票筛选系统
 
-**版本**：2.0
-**生效日期**：2026-05-09
+**版本**：2.1
+**生效日期**：2026-05-09（V2.0）｜2026-06-18（V2.1 三层漏斗重构）
 **方法论基底**：Pulak Prasad《What I Learned About Investing from Darwin》(2023)
 **相对 V1.0 的差异**：完全替换 30 因子加权与 4 层漏斗评分体系
+**相对 V2.0 的差异（V2.1）**：三层语义改为 **ROCE → 稳健性 → 风险性**（估值不再作为独立漏斗层）；
+新增分层人工 gate（每层暂停放行/剔除）、可配置 ROCE 回溯年数、持久化"我的股票池"、详情页瘦身。
+底层数据/指标/AI 工程沿用 V2.0；详见下方"〇、V2.1 修订说明"。
 
 ---
 
 ## 执行摘要
 
-本 PRD 将 Darwen 项目重写为一套**三层漏斗式股票筛选系统**：
+本 PRD 将 Darwen 项目定义为一套**三层漏斗式股票筛选系统**。
 
-1. **第一层（质量层）**：先筛"长期优质公司"，核心门槛 **过去 5 年 ROCE 中位数 ≥ 20% 且 4/5 年 ≥ 20%**
-2. **第二层（风险层）**：自动硬规则 + AI 风险标签器（ChatGPT 5 / MiniMax 2.7）过滤重大财务/治理/商业/行业风险
-3. **第三层（价格层）**：以 **TTM PE 14.9x** 为默认严格买入锚，标准模式分级放宽
+**V2.1（现行，2026-06-18）三层语义**：
+
+1. **第一层 ROCE 门槛**：长期资本回报优质，**过去 N 年（默认 5，可配 3/5/7/10）ROCE 中位数 ≥ 阈值（默认 20%）且 ⌈0.8N⌉ 年达标**
+2. **第二层 稳健性**：无负债有充裕现金流（规则）+ 多元化客户/供应商、行业变化慢、稳定管理团队、竞争壁垒（AI/规则代理）
+3. **第三层 风险性**：管理层不诚信、重大转型、疯狂并购、靠预测未来、不善待利益相关者（AI 红旗）
+
+每层跑完**暂停等人工放行/剔除**再推进（分层 gate）；通过全部三层即"入选"。
+估值（PE）不再作为独立漏斗层，降级为详情页参考信息。
+
+> V2.0 原三层为 质量(Q)/风险(R)/估值(V)；其工程实现（ROCE 公式、AI 标签、Q/R/V 规则）大量复用，
+> 详见下方各层章节，新旧映射见"〇、V2.1 修订说明"。
 
 **关键产品决策**：
 
@@ -23,6 +34,64 @@
 - **ROCE 严格按书中思路**：EBIT / (净营运资本〔剔除超额现金〕+ 固定资产净值)
 - **用户可自定义股票池、ROCE 门槛、风控敏感度与价格阈值**
 - **点时回测**必须以 filing/公告实际可见时间为准
+
+---
+
+## 〇、V2.1 修订说明（2026-06-18 三层漏斗重构）
+
+V2.1 在不改动底层数据/指标/AI 工程的前提下，调整筛选的**漏斗语义与交互**，使其更贴合书中
+"先质量、再稳健、后风险"的叙事。本节为现行权威描述；下方第五~七章的 Q/R/V 规则表作为实现细节与历史保留。
+
+### 0.1 三层语义映射（V2.0 → V2.1）
+
+| V2.1 层 | 判定方式 | 复用的 V2.0 资产 |
+|---|---|---|
+| ① ROCE 门槛 | 规则：按 N 年（可配）现算 ROCE 中位数 + 达标年数 | 第四章 ROCE 公式、第五章 Q0/Q1/Q3/Q4/Q5/Q6 |
+| ② 稳健性 | 规则（无负债有现金流）+ AI（4 类不稳健信号） | R1/R2 杠杆现金流 + AI 客户/供应商集中、行业断裂、管理层不稳 |
+| ③ 风险性 | AI（5 类风险红旗） | AI 治理/会计/监管、转型、并购、靠预测、利益相关者、少数股东 |
+| ~~估值~~ | 不再作为漏斗层 | 第七章 V-Layer 降级为详情页 PE 参考 |
+
+- 稳健性 6 原则：无负债有现金流(规则)、多元化客户、多元化供应商、行业变化慢、稳定管理团队、竞争壁垒(ROCE 代理)。
+- 风险性 5 原则：管理层不诚信、重大转型、疯狂并购、靠预测未来、不善待员工/客户/供应商。
+
+### 0.2 AI 标签（V2.1 扩展为 12 类，分两层）
+
+- 稳健层 `STURDINESS_LABELS`：customer_concentration_risk、supplier_concentration_risk、disruption_risk、management_instability
+- 风险层 `RISK_LABELS`：governance_risk、accounting_risk、regulatory_risk、turnaround_risk、serial_acquirer_risk、speculative_guidance_risk、stakeholder_unfriendly、minority_shareholder_risk
+- prompt 分 `sturdiness_filter` / `risk_filter`；`orchestrator.analyze_layer(layer)` 按层调用，`risk_ai_result.layer` 区分。
+- 融合规则不变：REJECT 需高置信(≥0.8) + 法定披露佐证，仅新闻类证据最高 REVIEW。
+
+### 0.3 分层人工 gate
+
+- 筛选不再一次性跑完：每层跑完置 `screen_run.layer_status=awaiting_review` 暂停。
+- 用户在漏斗页对**当前层**：放行被过滤者（`force_pass`）、剔除已通过者（`force_reject`），持久化于 `screen_result.manual_action`。
+- 推进下一层 `POST /v2/screen-run/{id}/advance`；风险层复核后定稿。`auto_advance=true` 可三层连跑。
+- 存活集语义：`screen_result.rejected_at_layer IS NULL` 即存活/入选；某层不通过标该层名，计数守恒。
+
+### 0.4 可配置 ROCE 回溯年数
+
+- 用户在选股页配置 ROCE 阈值 + 回溯年数（3/5/7/10），去掉独立"配置门槛"步骤。
+- 按 N 年现算：short 窗口=N（达标 ⌈0.8N⌉、近 N 年缺失 ≥2 走 Q5 覆核）；long 窗口=2N（强通过）。**N=5 与 V2.0 的 5Y/10Y 口径等价**。
+
+### 0.5 我的股票池（watchlist）
+
+- 持久化自选池：`watchlist` / `watchlist_item` 两表 + `/v2/watchlists*` API + 前端"我的股票池"页。
+- 股票详情页"进入我的股票池"按钮（指定池或自动建/复用默认池）。
+
+### 0.6 详情页瘦身 + 历史改名
+
+- 单股详情页精简为：历史 ROCE（含 10-K 出处链接）+ 三层过滤原因 + 出处溯源（AI evidence_doc_ids → 原文）+ 入池按钮。
+- "我的筛选历史"页支持行内重命名（`PATCH /v2/my-runs/{id}`）。
+
+### 0.7 新增数据模型字段（均加列/加表，可回滚）
+
+- `screen_run` +`current_layer`/`layer_status`/`auto_advance`
+- `screen_result` +`rejected_at_layer`/`layer_results`/`manual_action`
+- `risk_ai_result` +`layer`
+- 新表 `watchlist` / `watchlist_item`
+- 旧 Q/R/V 引擎（`screening/funnel.py`/`v_layer.py`）与 `ScreenConfig`/`ScreenResults` 页保留 **deprecated** 未删除。
+
+> 引擎落地：`backend/screening/funnel_v2.py`。工作日志：`milestones/2026-06-18.md`。
 
 ---
 
@@ -65,18 +134,22 @@
 
 ## 三、核心流程
 
+**V2.1 现行流程（分层漏斗 + 人工 gate）**：
+
 ```
-1. 股票池构建 ──→ 2. 点时数据拉取 ──→ 3. 优质公司筛选（Q-Layer）
-                                          │
-                                          ▼
-                                       通过 → 4. 风险过滤（R-Layer：硬规则 + AI）
-                                                  │
-                                                  ▼
-                                               通过/Review → 5. 价格闸门（V-Layer）
-                                                                │
-                                                                ▼
-                                                       6. 五状态输出
+1. 选股票池（内嵌 ROCE 阈值 + 回溯年数）→ 点时数据
+      ▼
+2. ① ROCE 门槛（规则，按 N 年现算）   ── 暂停 · 人工放行/剔除 ──┐
+                                                              ▼
+3. ② 稳健性（规则:无负债现金流 + AI:客户/供应商/行业/管理层）── 暂停 · 人工 ──┐
+                                                                            ▼
+4. ③ 风险性（AI:诚信/转型/并购/靠预测/利益相关者）  ── 暂停 · 人工 ──┐
+                                                                    ▼
+5. 定稿 → 入选（通过三层）；漏斗页展示每层过滤公司 + 原因标签 + 出处
 ```
+
+> `auto_advance=true` 时三层连跑、不暂停。旧 V2.0 流程（Q→R→V 一次性跑完 + 五状态分桶）见下方
+> 第五~八章历史描述，已被分层漏斗取代（旧引擎保留 deprecated）。
 
 ---
 
@@ -118,6 +191,8 @@ OperatingCurrentLiabilities_t = CurrentLiabilities_t
 
 ## 五、第一层：优质公司筛选规则（Q-Layer）
 
+> **V2.1**：本章 Q0/Q1/Q3–Q6 即现行 **① ROCE 门槛层** 的判定细则；ROCE 窗口由写死 5Y/10Y 改为可配 N 年（见〇.4），N=5 等价本章口径。
+
 | ID | 规则 | 自动化判定 | AI 判断 | 默认动作 | P0/P1 |
 |---|---|---|---|---|---|
 | Q0 | 非适用证券排除 | 银行/保险/券商/REIT/ETF/SPAC/壳/优先股/ADR | 无 | 排除或转观察池 | P0 |
@@ -131,6 +206,8 @@ OperatingCurrentLiabilities_t = CurrentLiabilities_t
 ---
 
 ## 六、第二层：风险过滤规则（R-Layer）
+
+> **V2.1**：R 层规则拆入两层 —— **② 稳健性**（R1/R2 杠杆现金流 + 客户/供应商集中、行业断裂、管理层不稳 AI）与 **③ 风险性**（治理/会计/监管、转型、并购、靠预测、利益相关者、少数股东 AI）。AI 标签扩为 12 类、分 `STURDINESS_LABELS`/`RISK_LABELS`（见〇.1/〇.2）。下表为完整规则字典，保留作实现细则。
 
 ### 证据优先级
 
@@ -211,6 +288,8 @@ E. 输出中文，不要生成买卖建议价位
 
 ## 七、第三层：价格筛选规则（V-Layer）
 
+> **V2.1**：估值**不再作为漏斗过滤层**，PE 等降级为详情页参考信息。本章保留作历史口径与潜在可选过滤（如未来恢复价格闸门）。
+
 | ID | 规则 | 自动化判定 | 默认动作 | P0/P1 |
 |---|---|---|---|---|
 | V1 | 主估值指标 | `PE_TTM` 为主；若 EPS≤0，不进入买入状态 | 继续观察 | P0 |
@@ -230,6 +309,11 @@ E. 输出中文，不要生成买卖建议价位
 | `Qualified but Too Expensive` | 合格但太贵 | 质量通过、风险可接受，但估值闸门未过 |
 | `Qualified and Near Fair Price` | 合格且接近合理价 | 质量通过、风险可接受、价格接近买入区 |
 | `High Conviction Candidate` | 高确信候选 | 强通过、低风险、价格达标、流动性达标 |
+
+> **V2.1 漏斗输出**：不再以 5 桶为主，而是按漏斗层记录每家公司去向 ——
+> `screen_result.rejected_at_layer` ∈ {`roce`, `sturdiness`, `risk`}（在该层被过滤）或 `NULL`（通过三层 = 入选）；
+> `layer_results` 存每层判定明细（含 AI principles + evidence）。漏斗页 `GET /v2/screen-run/{id}/funnel`
+> 返回各层 in/out 计数 + 被过滤公司 + 入选名单。旧 `status` 枚举仍写（Rejected/Review/HighConviction 粗映射），供 deprecated 旧结果页兼容。
 
 ---
 
@@ -383,4 +467,4 @@ E. 输出中文，不要生成买卖建议价位
 
 ---
 
-*版本：2.0 | 生效：2026-05-09 | 维护：Darwin Engineering*
+*版本：2.1 | 生效：2026-05-09（V2.0）/ 2026-06-18（V2.1 三层漏斗重构）| 维护：Darwin Engineering*

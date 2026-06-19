@@ -1,6 +1,6 @@
 # Darwen 项目进度总览
 
-> 最后更新：2026-06-18
+> 最后更新：2026-06-19
 > 项目方向：V2 股票筛选系统（基于 Pulak Prasad《What I Learned About Investing from Darwin》）
 
 ---
@@ -24,6 +24,14 @@
 - AI 双层判定（稳健 4 类 + 风险 8 类）已接入 `analyze_layer`，mock 验证通过；真实调用待用户 key。
 - 5 个 Alembic 迁移（加列/加表可回滚）；旧 Q/R/V 引擎保留 deprecated。
 - 新建 pytest（15 用例，含 ROCE N=5 等价护栏）。详见 `milestones/2026-06-18.md`。
+
+### 2026-06-19 AI 介入选项 + 漏斗 bug 修复 + PRD V2.1
+
+- 新增「AI 介入」选项 `ai_mode`（off / key_stage 仅风险层 / full 稳健+风险层全程）。
+- fix：漏斗页改按 run.status 判断，不再被残留 `layer_status=running` 卡死转圈；AI 调用独立 session 隔离。
+- fix：funnel 端点兼容旧引擎数据（无 rejected_at_layer 但 status=Rejected 不误判入选）；修正 14 个历史 run 状态。
+- PRD 同步到 V2.1。详见 `milestones/2026-06-19.md`。
+- **待办**：数据更新到 2025（指标只算到 2024，已认可待执行）。
 
 ---
 
@@ -211,6 +219,7 @@ PRD 第 6 节"证据优先级"层次完整：法定披露可触发 REJECT，新�
 - `milestones/2026-05-12.md` — M3-M7 主线收官
 - `milestones/2026-05-13.md` — A 股 close 不复权数据修补
 - `milestones/2026-06-18.md` — 三层漏斗重构（ROCE→稳健→风险 / 分层 gate / 我的股票池）
+- `milestones/2026-06-19.md` — AI 介入选项 + 漏斗 bug 修复 + PRD V2.1
 
 ---
 
