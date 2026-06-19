@@ -25,11 +25,22 @@ class ScreenConfig:
     # V 层估值模式
     valuation_mode: str = "strict"  # strict / standard / loose
 
-    # AI provider（M3 暂未消费，留给 M4）
+    # AI provider
     ai_provider: str | None = None
 
-    # M3 阶段：R 层是否启用 AI（默认 False，全部走 RULE_ONLY）
+    # AI 介入范围：off=不调AI（全规则/占位）| key_stage=仅风险层(关键阶段) | full=稳健层+风险层全程
+    ai_mode: str = "off"
+
+    # 兼容旧 R 层引擎；funnel_v2 改用 ai_mode / ai_enabled_for 判断
     enable_ai_risk_layer: bool = False
+
+    def ai_enabled_for(self, layer: str) -> bool:
+        """funnel_v2 各层是否调 AI：full=稳健+风险；key_stage=仅风险层；off=都不调。"""
+        if self.ai_mode == "full":
+            return layer in ("sturdiness", "risk")
+        if self.ai_mode == "key_stage":
+            return layer == "risk"
+        return False
 
     @property
     def r1_net_debt_ebit_max(self) -> float:

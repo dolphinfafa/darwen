@@ -91,6 +91,15 @@
         </select>
         <span class="muted">计算当前往前 N 年的 ROCE 中位数</span>
       </label>
+      <label>
+        AI 介入
+        <select v-model="aiMode">
+          <option value="off">不启用（纯规则，最快）</option>
+          <option value="key_stage">仅关键阶段（风险层 AI）</option>
+          <option value="full">全程（稳健层 + 风险层 AI）</option>
+        </select>
+        <span class="muted">AI 需先在账户设置绑定 key</span>
+      </label>
     </fieldset>
 
     <div class="actions">
@@ -134,6 +143,8 @@ const roce = reactive({
   threshold: 0.20,
   lookback_years: 5,
 })
+// AI 介入范围：off=纯规则 | key_stage=仅风险层 | full=稳健+风险层全程
+const aiMode = ref('off')
 
 // 从 sessionStorage 恢复选中（刷新/返回后保留股票池选择）
 const STORAGE_KEY = 'darwen_universe_selected'
@@ -221,6 +232,7 @@ async function start() {
       company_ids: [...selected.value],
       roce_threshold: roce.threshold,
       roce_lookback_years: roce.lookback_years,
+      ai_mode: aiMode.value,
       // 分层人工 gate：每层跑完暂停等复核，在漏斗页放行/剔除后再推进下一层
       auto_advance: false,
     })

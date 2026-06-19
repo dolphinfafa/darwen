@@ -58,6 +58,7 @@ class ScreenRunCreateRequest(BaseModel):
     roce_threshold: float = Field(default=0.20, ge=0.0, le=1.0)
     roce_lookback_years: int = Field(default=5, ge=3, le=15)
     enable_ai_risk_layer: bool = False
+    ai_mode: Literal["off", "key_stage", "full"] = "off"  # AI 介入范围：不启用/仅风险层/全程
     ai_provider: Optional[Literal["chatgpt", "minimax"]] = None
     auto_advance: bool = False  # True=三层连跑；False=每层暂停等人工 gate
 

@@ -10,6 +10,10 @@
     </header>
 
     <div v-if="error" class="error">{{ error }}</div>
+    <div v-if="isFailed" class="error">
+      ⚠ 本次筛选执行中断（{{ status?.error_msg || 'AI 调用或后台任务被中断' }}）。
+      多为 AI 跑批途中后端重启所致，请返回<router-link to="/universe">重新发起筛选</router-link>。
+    </div>
 
     <!-- 当前层评估进度 -->
     <div v-if="isRunning" class="running">

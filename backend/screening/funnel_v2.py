@@ -119,17 +119,21 @@ def _run_layer_ai(db: Session, company_id: str, asof: date, config: ScreenConfig
                   user_id: Optional[int], run_id: Optional[int], layer: str):
     """调某层 AI 判定。返回 (ai_action, ai_result_id, ai_codes, labels)；
     未启用 AI / 未绑 key / 调用降级 → (None, None, [], [])。"""
-    if not (config.enable_ai_risk_layer and user_id is not None):
+    if not (config.ai_enabled_for(layer) and user_id is not None):
         return None, None, [], []
     from backend.ai.orchestrator import analyze_layer, AIResult
+    # 用独立 session 调 AI：AI 内部的 commit/异常不污染漏斗主 session（否则整层 run_from 会抛错卡 running）
+    ai_db = SessionLocal()
     try:
         outcome = analyze_layer(
-            db, company_id=company_id, asof_date=asof, user_id=user_id,
+            ai_db, company_id=company_id, asof_date=asof, user_id=user_id,
             run_id=run_id, layer=layer, rule_triggered={},
         )
     except Exception as e:  # noqa: BLE001
         log.warning("AI %s layer failed for %s: %s", layer, company_id, e)
         return None, None, [], []
+    finally:
+        ai_db.close()
     if not isinstance(outcome, AIResult):
         return None, None, [], []  # RuleOnly 降级
     codes = [

@@ -290,7 +290,9 @@ def create_screen_run(
         risk_sensitivity=body.risk_sensitivity,
         valuation_mode=body.valuation_mode,
         ai_provider=body.ai_provider,
-        enable_ai_risk_layer=body.enable_ai_risk_layer,
+        ai_mode=body.ai_mode,
+        # 兼容：ai_mode 非 off 即视为启用 AI（旧 R 层引擎仍读此字段）
+        enable_ai_risk_layer=body.enable_ai_risk_layer or body.ai_mode != "off",
     )
     from dataclasses import asdict
     config_snapshot = asdict(config)
@@ -485,6 +487,9 @@ def get_funnel(
         fc = _to_funnel_company(sr, c.name, c.market, c.industry_name, sec.ticker if sec else None)
         if sr.rejected_at_layer in rejected_by_layer:
             rejected_by_layer[sr.rejected_at_layer].append(fc)
+        elif sr.status in ("Rejected", "TooExpensive"):
+            # 兼容旧引擎数据（无 rejected_at_layer 但 status 已排除）：归第一层，避免误判入选
+            rejected_by_layer["roce"].append(fc)
         else:
             survivors.append(fc)
 
