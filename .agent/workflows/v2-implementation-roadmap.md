@@ -2,15 +2,31 @@
 
 本文档定义 Darwen V2 重构剩余里程碑（M2-M7）的执行顺序、关键依赖与验收标准。
 
-**当前状态**：筛选已重构为 **ROCE → 稳健性 → 风险性 三层漏斗 + 分层人工 gate**（2026-06-18）；
-底层 V2 工程闭环 + 数据修补 + AI 调用沿用 2026-05-13 版本。
+**当前状态**：筛选为 **ROCE → 稳健性 → 风险性 三层全自动漏斗**（2026-06-20 起默认 auto_advance 连跑，
+人工 gate 的 HTTP 层已移除）；底层 V2 工程闭环 + 数据修补（含 2025 财年）+ AI 调用沿用 2026-05-13 版本。
 
 工作日志：
 - `milestones/2026-05-12.md` — M1-M7 主线 + 全量回填 (12 章)
 - `milestones/2026-05-13.md` — A 股 close / 金融股 / TSLA 财年 / E6 / 中文标签 / M4 真实 AI (12 章)
 - `milestones/2026-06-18.md` — **三层漏斗重构**（ROCE 可配置 / 分层 gate / AI 双层 / 我的股票池 / 详情页瘦身，11 章）
+- `milestones/2026-06-19.md` — AI 介入范围可选 + 漏斗两 bug 修复 + PRD V2.1
+- `milestones/2026-06-20.md` — **漏斗改全自动**（取消人工 gate + 移除 /advance /manual）+ 筛选历史删除 + 详情页/原因标签 tooltip
 
-### 2026-06-18 架构演进（现行筛选流程，优先于下方历史路线图）
+### 2026-06-20 架构演进（现行筛选流程，优先于下方历史路线图）
+
+筛选改为**全自动三层漏斗**：过 ROCE 自动进稳健性、过稳健性自动进风险性、通过风险性即最终入选，
+取消每层人工暂停。
+
+- `ScreenRunCreateRequest.auto_advance` 默认 `True`，前端 `UniverseConfig` 传 `auto_advance: true`；
+  引擎 `funnel_v2.run_from` 在 `auto_advance` 下连跑 roce→sturdiness→risk→`_finalize` 定稿。
+- **已移除人工 gate 的 HTTP 层**：`POST /v2/screen-run/{id}/advance`、`/manual` 端点 + schema
+  `AdvanceResponse`/`ManualActionRequest` + 前端 `advanceLayer`/`manualAction`。`FunnelResults.vue`
+  退化为纯展示（运行进度 → 三层漏斗 → 最终入选）。
+- **保留**：引擎层 `finalize_run` / `run_from` 非 auto 分支（无 HTTP 入口的引擎能力）、
+  `manual_action` 数据字段（详情展示是否人工干预过）。`auto_advance=False` 路径引擎仍在但无外部推进入口。
+- 其余沿用下方 2026-06-18 架构（层语义 / AI / 存活集 / 迁移均不变）。
+
+### 2026-06-18 架构演进（层定义与实现细节，仍现行；推进方式已被上方全自动取代）
 
 筛选流程已从 Q/R/V（质量/风险/估值）改为 **ROCE → 稳健性 → 风险性**：
 
@@ -22,13 +38,14 @@
   → 入选
 ```
 
-- 引擎 `screening/funnel_v2.py`：存活集 = `screen_result.rejected_at_layer IS NULL`；每层暂停
-  `awaiting_review` 等人工放行/剔除（`POST /v2/screen-run/{id}/manual`），再 `/advance` 推进；
-  `auto_advance=True` 连跑；risk 复核后 `finalize_run` 定稿。`GET /v2/screen-run/{id}/funnel` 出漏斗数据。
+- 引擎 `screening/funnel_v2.py`：存活集 = `screen_result.rejected_at_layer IS NULL`；
+  `auto_advance=True`（现默认）连跑 roce→sturdiness→risk→`_finalize` 定稿。
+  〔2026-06-20 起人工 gate（`awaiting_review` + `/manual` + `/advance`）已移除，见上方 06-20 节〕
+  `GET /v2/screen-run/{id}/funnel` 出漏斗数据。
 - AI 走 `ai/orchestrator.analyze_layer(layer=sturdiness|risk)`，prompt 分 `prompts/sturdiness_filter`（4 类）
   / `prompts/risk_filter`（8 类）；`risk_ai_result.layer` 区分；融合规则保守（REJECT 需法定披露）。
 - 新增"我的股票池"：`api/watchlist.py` + `models/watchlist.py` + `MyWatchlist.vue`。
-- 前端：`FunnelResults.vue`（漏斗页 + gate）替代 `ScreenResults` 角色；`UniverseConfig` 内嵌 ROCE 配置；
+- 前端：`FunnelResults.vue`（漏斗展示页，gate 已于 06-20 移除）替代 `ScreenResults` 角色；`UniverseConfig` 内嵌 ROCE 配置；
   `CompanyDetailV2` 瘦身为「历史 ROCE + 过滤原因 + 出处」+ 入池按钮；`MyRuns` 行内改名。
 - 迁移：`funnel_v2_layers` / `add_risk_ai_layer` / `add_watchlist`（均加列/加表，可回滚）。
 - **旧 Q/R/V**（`screening/funnel.py`/`v_layer.py`、`ScreenConfig.vue`、`ScreenResults.vue`）保留
