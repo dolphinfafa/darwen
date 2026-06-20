@@ -1,11 +1,11 @@
 # Darwen 项目进度总览
 
-> 最后更新：2026-06-19
+> 最后更新：2026-06-20
 > 项目方向：V2 股票筛选系统（基于 Pulak Prasad《What I Learned About Investing from Darwin》）
 
 ---
 
-## 项目状态：筛选重构为 ROCE → 稳健性 → 风险性 三层漏斗 + 分层人工 gate（2026-06-18）
+## 项目状态：ROCE → 稳健性 → 风险性 三层全自动漏斗（2026-06-20 起取消人工 gate；架构始于 2026-06-18）
 
 底层 V2 工程 + 数据精修 + AI 调用沿用 2026-05-13 生产可用版本。
 
@@ -31,7 +31,16 @@
 - fix：漏斗页改按 run.status 判断，不再被残留 `layer_status=running` 卡死转圈；AI 调用独立 session 隔离。
 - fix：funnel 端点兼容旧引擎数据（无 rejected_at_layer 但 status=Rejected 不误判入选）；修正 14 个历史 run 状态。
 - PRD 同步到 V2.1。详见 `milestones/2026-06-19.md`。
-- **待办**：数据更新到 2025（指标只算到 2024，已认可待执行）。
+- ~~待办：数据更新到 2025~~ → ✅ 已确认落库（`metric_periodic` 2025 覆盖 594 家，2026-06-20 核对）。
+
+### 2026-06-20 漏斗全自动化 + 交接事项重做
+
+- **三层漏斗改全自动连跑**：`auto_advance` 默认 true，过一层自动进下一层、通过风险层即入选；
+  取消分层人工 gate，移除 `/advance`、`/manual` 端点 + 前端 `advanceLayer`/`manualAction` + gate UI。
+- 筛选历史删除：`DELETE /v2/my-runs/{id}`（FK 顺序级联清子表）+ MyRuns 删除按钮（端到端验证通过）。
+- 详情页 ROCE/EBIT/CapitalEmployed 表头 ⓘ 口径说明；原因标签接入全局 `.dtip` 悬浮释义。
+- 数据核对：Rocket(US_0001805284) `is_excluded=0` 未生效（全表 598 家无一排除，但其 ROCE 历年全 NULL 会被 ROCE 层自然过滤）。
+- PRD 同步到 **V2.2**；本会话 5 提交（`6498ca5`/`0b262f2`/`cbe4d72`/`d5efaac`/`8f7bdfb`）。详见 `milestones/2026-06-20.md`。
 
 ---
 
@@ -220,6 +229,7 @@ PRD 第 6 节"证据优先级"层次完整：法定披露可触发 REJECT，新�
 - `milestones/2026-05-13.md` — A 股 close 不复权数据修补
 - `milestones/2026-06-18.md` — 三层漏斗重构（ROCE→稳健→风险 / 分层 gate / 我的股票池）
 - `milestones/2026-06-19.md` — AI 介入选项 + 漏斗 bug 修复 + PRD V2.1
+- `milestones/2026-06-20.md` — 漏斗改全自动 + 筛选历史删除 + 表头/原因标签 tooltip + PRD V2.2
 
 ---
 
