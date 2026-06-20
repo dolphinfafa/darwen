@@ -21,7 +21,6 @@ from backend.models.screen_run import ScreenRun
 from backend.models.security import Security
 from backend.models.user import User
 from backend.schemas.v2 import (
-    AdvanceResponse,
     CompanyDetailResponse,
     CompanyListItem,
     CompanyProfileResponse,
@@ -30,7 +29,6 @@ from backend.schemas.v2 import (
     FunnelResponse,
     IndustryItem,
     EvidenceDoc,
-    ManualActionRequest,
     MetricLineageOut,
     RunRenameRequest,
     RiskAIDetailOut,
@@ -525,93 +523,6 @@ def get_funnel(
         layers=layers,
         survivors=survivors,
     )
-
-
-@router.post("/screen-run/{run_id}/advance", response_model=AdvanceResponse)
-def advance_layer(
-    run_id: int,
-    bg: BackgroundTasks,
-    user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
-    """推进到下一层（后台执行）。仅当前层处于 awaiting_review 时可调用。"""
-    run = db.get(ScreenRun, run_id)
-    if run is None:
-        raise HTTPException(404, "run not found")
-    if run.user_id != user.id and not user.is_admin:
-        raise HTTPException(403, "not your run")
-    if run.layer_status != "awaiting_review":
-        raise HTTPException(400, "当前层未处于待推进状态")
-    nxt = funnel_v2._NEXT.get(run.current_layer or "roce")
-    if nxt is None:
-        raise HTTPException(400, "无法推进")
-    run.layer_status = "running"
-    db.add(run)
-    db.commit()
-    if nxt == "done":
-        # risk 层复核完成 → 定稿（存活者置入选 + completed）
-        bg.add_task(funnel_v2.finalize_run, run_id)
-    else:
-        bg.add_task(funnel_v2.run_from, run_id, nxt)
-    return AdvanceResponse(run_id=run_id, next_layer=nxt, layer_status="running")
-
-
-@router.post("/screen-run/{run_id}/manual")
-def manual_action(
-    run_id: int,
-    body: ManualActionRequest,
-    user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
-    """人工 gate：放行当前层被过滤的 / 剔除当前层已通过的，并持久化。"""
-    from datetime import datetime
-    run = db.get(ScreenRun, run_id)
-    if run is None:
-        raise HTTPException(404, "run not found")
-    if run.user_id != user.id and not user.is_admin:
-        raise HTTPException(403, "not your run")
-    if run.layer_status != "awaiting_review":
-        raise HTTPException(400, "仅在某层暂停待复核时可人工干预")
-    layer = run.current_layer
-    sr = db.execute(
-        select(ScreenResult).where(
-            (ScreenResult.run_id == run_id) & (ScreenResult.company_id == body.company_id)
-        ).limit(1)
-    ).scalar()
-    if sr is None:
-        raise HTTPException(404, "company not in this run")
-
-    if body.action == "force_pass":
-        if sr.rejected_at_layer != layer:
-            raise HTTPException(400, "该公司未被当前层过滤，无法放行")
-        sr.rejected_at_layer = None
-        sr.status = "Review"
-    else:  # force_reject
-        if sr.rejected_at_layer is not None:
-            raise HTTPException(400, "该公司已不在存活集，无法剔除")
-        sr.rejected_at_layer = layer
-        sr.status = "Rejected"
-    sr.manual_action = {
-        "layer": layer, "action": body.action,
-        "note": body.note, "at": datetime.now().isoformat(),
-    }
-    db.add(sr)
-    db.commit()
-
-    # 重新统计存活/出局并写回 run
-    rows = db.execute(
-        select(ScreenResult.rejected_at_layer).where(ScreenResult.run_id == run_id)
-    ).all()
-    alive = sum(1 for r in rows if r.rejected_at_layer is None)
-    rejected = sum(1 for r in rows if r.rejected_at_layer is not None)
-    run.passed_count = alive
-    run.rejected_count = rejected
-    db.add(run)
-    db.commit()
-    return {
-        "ok": True, "company_id": body.company_id,
-        "rejected_at_layer": sr.rejected_at_layer, "alive": alive, "rejected": rejected,
-    }
 
 
 # ---------------- 单股详情 ----------------

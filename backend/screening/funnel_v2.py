@@ -345,8 +345,9 @@ def run_from(run_id: int, start_layer: str) -> None:
                     return
                 layer = nxt
                 continue
-            # 非 auto：每层（含最后的 risk）跑完都停下等人工 gate；
-            # risk 层复核完成后由 advance 端点调 finalize_run 定稿。
+            # 非 auto（auto_advance=False）：每层跑完停在 awaiting_review。
+            # 注：HTTP 人工 gate 端点（/advance、/manual）已移除，此分支当前无外部推进入口，
+            # 仅保留引擎能力；默认全自动见上方 auto_advance 分支。
             _set_run(db, run_id, current_layer=layer, layer_status="awaiting_review",
                      current_company_name=None)
             return

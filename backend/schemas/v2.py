@@ -241,13 +241,6 @@ class WatchlistDetailResponse(BaseModel):
 
 # ============ 三层漏斗（funnel_v2）============
 
-class ManualActionRequest(BaseModel):
-    """人工 gate：放行被过滤的 / 剔除已通过的（针对当前层）。"""
-    company_id: str
-    action: Literal["force_pass", "force_reject"]
-    note: Optional[str] = None
-
-
 class FunnelCompany(BaseModel):
     company_id: str
     ticker: Optional[str] = None
@@ -279,12 +272,6 @@ class FunnelResponse(BaseModel):
     total: int
     layers: list[FunnelLayer]
     survivors: list[FunnelCompany] = []  # 当前存活/最终入选（rejected_at_layer 为空）
-
-
-class AdvanceResponse(BaseModel):
-    run_id: int
-    next_layer: Optional[str]
-    layer_status: str
 
 
 class RunRenameRequest(BaseModel):

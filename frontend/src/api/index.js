@@ -53,9 +53,6 @@ export const getCompanyDetail = (runId, companyId) =>
 
 // ───────── V2 三层漏斗（funnel_v2）─────────
 export const getFunnel = runId => api.get(`/v2/screen-run/${runId}/funnel`)
-export const advanceLayer = runId => api.post(`/v2/screen-run/${runId}/advance`)
-export const manualAction = (runId, company_id, action, note = null) =>
-  api.post(`/v2/screen-run/${runId}/manual`, { company_id, action, note })
 
 // ───────── V2 Reason Code 中文标签 ─────────
 export const getReasonCodeLabels = () => api.get('/v2/reason-codes/labels')
