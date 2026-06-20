@@ -60,7 +60,7 @@ class ScreenRunCreateRequest(BaseModel):
     enable_ai_risk_layer: bool = False
     ai_mode: Literal["off", "key_stage", "full"] = "off"  # AI 介入范围：不启用/仅风险层/全程
     ai_provider: Optional[Literal["chatgpt", "minimax"]] = None
-    auto_advance: bool = False  # True=三层连跑；False=每层暂停等人工 gate
+    auto_advance: bool = True  # True=三层全自动连跑到 done（默认）；False=每层暂停等人工 gate
 
     model_config = {"extra": "ignore"}
 

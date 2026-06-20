@@ -233,8 +233,8 @@ async function start() {
       roce_threshold: roce.threshold,
       roce_lookback_years: roce.lookback_years,
       ai_mode: aiMode.value,
-      // 分层人工 gate：每层跑完暂停等复核，在漏斗页放行/剔除后再推进下一层
-      auto_advance: false,
+      // 全自动三层漏斗：ROCE→稳健性→风险性逐层自动推进，最终通过风险层的即入选列表
+      auto_advance: true,
     })
     router.push({ name: 'FunnelResults', params: { runId: data.run_id } })
   } catch (e) {
