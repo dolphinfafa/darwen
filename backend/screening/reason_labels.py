@@ -96,6 +96,8 @@ REASON_LABELS: dict[str, LabelEntry] = {
     "STURDINESS_WEAK_COVERAGE": {"label": "偿债能力弱", "desc": "稳健层：interest_coverage 低于阈值", "layer": "R", "severity": "error"},
     "STURDINESS_NEGATIVE_FCF": {"label": "现金流持续为负", "desc": "稳健层：近 5 年 FCF<0 年数超阈值（违反'有现金流'原则）", "layer": "R", "severity": "error"},
     "RISK_PENDING_AI": {"label": "待AI判定", "desc": "风险层：未启用 AI 或未绑定 key，暂占位放行，待人工/AI 复核", "layer": "META", "severity": "info"},
+    "STURDINESS_AI_REVIEW": {"label": "稳健性AI存疑", "desc": "稳健层：AI 判定为 REVIEW（识别到非确凿的不稳健信号），按排除法出局", "layer": "R", "severity": "warning"},
+    "RISK_AI_REVIEW": {"label": "风险性AI存疑", "desc": "风险层：AI 判定为 REVIEW（识别到非确凿的风险红旗），按排除法出局", "layer": "R", "severity": "warning"},
 }
 
 

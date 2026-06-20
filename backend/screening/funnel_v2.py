@@ -45,6 +45,9 @@ STURDINESS_WEAK_COVERAGE = "STURDINESS_WEAK_COVERAGE"
 STURDINESS_NEGATIVE_FCF = "STURDINESS_NEGATIVE_FCF"
 # 风险层占位（阶段3 接 AI）
 RISK_PENDING_AI = "RISK_PENDING_AI"
+# AI 判定 REVIEW（有风险但非法定确凿）→ 出局兜底标记（具体风险通常见 AI_* 标签）
+STURDINESS_AI_FLAGGED = "STURDINESS_AI_REVIEW"
+RISK_AI_FLAGGED = "RISK_AI_REVIEW"
 
 # 稳健性 6 原则 key（前端展示用；阶段2 仅第 1 条有规则判定）
 _STURDINESS_PRINCIPLES = (
@@ -187,7 +190,11 @@ def _eval_sturdiness(db: Session, company_id: str, asof: date, config: ScreenCon
         for p in _STURDINESS_PRINCIPLES[1:]:
             principles[p] = flagged.get(p, {"status": "pass", "method": "ai"})
 
-    passed = (not rule_fail) and (ai_action != "REJECT")
+    # REVIEW/REJECT 出局；PASS 与 MONITOR（"有轻微迹象但不阻止"）通过；None=未跑 AI 不出局
+    ai_blocked = ai_action in ("REVIEW", "REJECT")
+    passed = (not rule_fail) and not ai_blocked
+    if ai_blocked and not any(c.startswith("AI_") for c in reason_codes):
+        reason_codes.append(STURDINESS_AI_FLAGGED)
     if passed and not reason_codes:
         reason_codes.append(STURDINESS_PASS)
     return passed, {
@@ -205,8 +212,12 @@ def _eval_risk(db: Session, company_id: str, asof: date, config: ScreenConfig,
     if ai_action is None:
         return True, {"passed": True, "reason_codes": [RISK_PENDING_AI], "metrics": {},
                       "pending_ai": True, "ai_result_id": None, "ai_action": None}
-    passed = ai_action != "REJECT"
-    return passed, {"passed": passed, "reason_codes": ai_codes, "metrics": {},
+    # REVIEW/REJECT 出局；PASS 与 MONITOR（事件型风险但不阻止）通过（此处 ai_action 已非 None）
+    passed = ai_action not in ("REVIEW", "REJECT")
+    codes = list(ai_codes)
+    if not passed and not codes:
+        codes.append(RISK_AI_FLAGGED)
+    return passed, {"passed": passed, "reason_codes": codes, "metrics": {},
                     "pending_ai": False, "ai_result_id": ai_id, "ai_action": ai_action}
 
 
