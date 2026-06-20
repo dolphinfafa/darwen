@@ -35,6 +35,19 @@
   `PASS`/`MONITOR` 通过（此前仅 REJECT 出局，后两层几乎不过滤）。
 - commit `6524b03` / `52fee38`，详见 `milestones/2026-06-20.md` 六节。
 
+### 2026-06-20 TTM 口径评估 —— 决定暂不做（维持年报口径）
+
+用户曾拟「纳入 2026 季报、ROCE 改 TTM（滚动 12 个月）」，经 plan mode 探索 + 数据核查后**决定
+暂不实施**，维持年报口径。理由：① 季度 ROCE 噪声偏离 Pulak「长期一致性」本质；② TTM EBIT 需 4 季
+求和，fact 表最新一条是 Q4 单季还是 FY 全年需逐家甄别、易算错；③ A 股季报口径差异。
+`as_of=2025-12-31` 已是最新完整财年（非旧数据）。
+
+- **FY2026 推进 SOP（约 2027 初年报齐备后）**：`compute.py` 的 `persist_all_metrics_*` 默认
+  `year_range` 上限 2025→2026；`schemas/v2.py` 的 `as_of_date` 默认改 `date(2026,12,31)`；
+  重跑 `persist_all_metrics_bulk`（548 美股约 12 分钟），无需改计算逻辑。
+- 若将来仍想用季报：最轻量方案是往 `metric_periodic` 写一条 `period_end=2026-xx`/`roce` 的行，
+  `q_layer._read_roce_series`（按 period_end.year 去重、现场算中位数）会自动纳入，无需动 q_layer。
+
 ### 2026-06-18 架构演进（层定义与实现细节，仍现行；推进方式已被上方全自动取代）
 
 筛选流程已从 Q/R/V（质量/风险/估值）改为 **ROCE → 稳健性 → 风险性**：
