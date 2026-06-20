@@ -37,7 +37,10 @@
         <table class="series">
           <thead>
             <tr>
-              <th>财年末</th><th>ROCE</th><th>EBIT</th><th>CapitalEmployed</th>
+              <th>财年末</th>
+              <th>ROCE <span class="dtip info-i" data-tip="资本回报率 ROCE = EBIT ÷ 已动用资本。衡量公司用投入资本赚取税前经营利润的效率，本系统门槛为单年 ≥ 20%（绿色高亮）。">ⓘ</span></th>
+              <th>EBIT <span class="dtip info-i" data-tip="息税前利润（Earnings Before Interest &amp; Taxes）：未扣除利息和所得税前的经营利润，是 ROCE 的分子。单位：十亿。">ⓘ</span></th>
+              <th>CapitalEmployed <span class="dtip info-i" data-tip="已动用资本 = 总资产 − 流动负债（≈ 股东权益 + 有息负债），代表企业经营实际占用的长期资本，是 ROCE 的分母。单位：十亿。">ⓘ</span></th>
               <th>出处</th>
             </tr>
           </thead>
@@ -283,4 +286,6 @@ table.series td.ok { color: #176b3a; font-weight: 600; }
 .sev.low { background: #fff4d6; color: #b06000; }
 .sev.medium { background: #ffe4cc; color: #b04000; }
 .sev.high { background: #fde0e0; color: #c00; }
+.info-i { color: #9aa0b0; font-size: 0.78rem; font-weight: 400; margin-left: 2px; }
+.info-i:hover { color: #4285f4; }
 </style>

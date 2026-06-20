@@ -63,6 +63,7 @@ export const getReasonCodeLabels = () => api.get('/v2/reason-codes/labels')
 // ───────── V2 我的筛选历史 ─────────
 export const getMyRuns = (limit = 50) => api.get('/v2/my-runs', { params: { limit } })
 export const renameRun = (runId, name) => api.patch(`/v2/my-runs/${runId}`, { name })
+export const deleteRun = runId => api.delete(`/v2/my-runs/${runId}`)
 export const getEvidence = (cid, docIds) =>
   api.get(`/v2/company/${cid}/evidence`, { params: { doc_ids: docIds } })
 

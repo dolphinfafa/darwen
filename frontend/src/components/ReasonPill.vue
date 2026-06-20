@@ -1,8 +1,8 @@
 <template>
   <span
-    class="reason-pill"
+    class="reason-pill dtip"
     :class="['sev-' + meta.severity, 'layer-' + meta.layer]"
-    :title="meta.desc || code"
+    :data-tip="tipText"
   >
     {{ meta.label }}
   </span>
@@ -17,6 +17,10 @@ const props = defineProps({
 })
 
 const meta = computed(() => formatReason(props.code))
+const tipText = computed(() => {
+  const m = meta.value
+  return m.desc ? `${m.label}\n${m.desc}` : (m.label || props.code)
+})
 </script>
 
 <style scoped>

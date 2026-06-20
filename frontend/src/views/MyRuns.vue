@@ -55,8 +55,9 @@
             <span class="bucket rev">{{ r.review_count }}</span>
           </td>
           <td class="muted">{{ formatTime(r.started_at) }}</td>
-          <td>
-            <button class="link">{{ r.status === 'running' ? '进度 →' : '结果 →' }}</button>
+          <td @click.stop>
+            <button class="link" @click="openRun(r)">{{ r.status === 'running' ? '进度 →' : '结果 →' }}</button>
+            <button class="link del-btn" @click="removeRun(r)" title="删除此筛选">🗑</button>
           </td>
         </tr>
       </tbody>
@@ -67,7 +68,7 @@
 <script setup>
 import { onMounted, onUnmounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { getMyRuns, renameRun } from '../api'
+import { getMyRuns, renameRun, deleteRun } from '../api'
 
 const router = useRouter()
 const runs = ref([])
@@ -103,6 +104,16 @@ function formatTime(iso) {
 }
 function openRun(r) {
   router.push({ name: 'FunnelResults', params: { runId: r.run_id } })
+}
+async function removeRun(r) {
+  const label = r.universe_name ? `「${r.universe_name}」` : `#${r.run_id}`
+  if (!confirm(`确定删除筛选 ${label} 吗？此操作不可撤销，将一并删除其全部结果。`)) return
+  try {
+    await deleteRun(r.run_id)
+    runs.value = runs.value.filter(x => x.run_id !== r.run_id)
+  } catch (e) {
+    error.value = e.response?.data?.detail || e.message
+  }
 }
 function startEdit(r) { editingId.value = r.run_id; editName.value = r.universe_name || '' }
 async function saveRename(r) {
@@ -164,5 +175,8 @@ onUnmounted(() => { if (timer) clearInterval(timer) })
 }
 .edit-btn { opacity: 0.4; }
 .runs tbody tr:hover .edit-btn { opacity: 1; }
+.del-btn { color: #c0392b; opacity: 0.4; }
+.runs tbody tr:hover .del-btn { opacity: 1; }
+.del-btn:hover { color: #e74c3c; }
 .edit-inp { padding: 3px 8px; border: 1px solid #4285f4; border-radius: 5px; font-size: 0.85rem; width: 140px; }
 </style>

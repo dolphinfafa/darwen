@@ -199,3 +199,54 @@ tr:hover { background: rgba(26,115,232,0.04); }
   padding: 40px;
   color: var(--text-secondary);
 }
+
+/* ───────── 通用悬浮说明 tooltip（.dtip + data-tip） ─────────
+   用法：<span class="dtip" data-tip="说明文字">ⓘ</span>
+   纯 CSS，文字取自 data-tip 属性，悬浮显示深色气泡，向上弹出。 */
+.dtip {
+  position: relative;
+  cursor: help;
+}
+.dtip::after {
+  content: attr(data-tip);
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% + 8px);
+  transform: translateX(-50%);
+  white-space: pre-line;
+  width: max-content;
+  max-width: 280px;
+  background: #1f2433;
+  color: #f5f6fa;
+  font-size: 0.75rem;
+  line-height: 1.55;
+  font-weight: 400;
+  text-align: left;
+  padding: 8px 11px;
+  border-radius: 6px;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.22);
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.15s ease;
+  z-index: 1000;
+  pointer-events: none;
+}
+.dtip::before {
+  content: '';
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% + 3px);
+  transform: translateX(-50%);
+  border: 5px solid transparent;
+  border-top-color: #1f2433;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.15s ease;
+  z-index: 1000;
+  pointer-events: none;
+}
+.dtip:hover::after,
+.dtip:hover::before {
+  opacity: 1;
+  visibility: visible;
+}

@@ -8,7 +8,7 @@ from datetime import date
 from typing import Optional
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
-from sqlalchemy import select, func
+from sqlalchemy import select, func, delete
 from sqlalchemy.orm import Session
 
 from backend.database import SessionLocal, get_db
@@ -844,3 +844,28 @@ def rename_run(
         rejected_count=run.rejected_count, review_count=run.review_count,
         current_company_name=run.current_company_name,
     )
+
+
+@router.delete("/my-runs/{run_id}", status_code=204)
+def delete_run(
+    run_id: int,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """删除筛选批次及其全部子结果。仅本人（或管理员）可删。
+
+    子表按外键依赖顺序清理：screen_result（引用 run_id 与 risk_ai_result）→
+    risk_ai_result → metric_lineage_log → screen_run。
+    """
+    run = db.get(ScreenRun, run_id)
+    if run is None:
+        raise HTTPException(404, "run not found")
+    if run.user_id != user.id and not user.is_admin:
+        raise HTTPException(403, "not your run")
+
+    db.execute(delete(ScreenResult).where(ScreenResult.run_id == run_id))
+    db.execute(delete(RiskAIResult).where(RiskAIResult.run_id == run_id))
+    db.execute(delete(MetricLineageLog).where(MetricLineageLog.run_id == run_id))
+    db.execute(delete(ScreenRun).where(ScreenRun.run_id == run_id))
+    db.commit()
+    return None
