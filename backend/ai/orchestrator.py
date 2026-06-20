@@ -27,7 +27,7 @@ import json
 import logging
 import time
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, timedelta
 from typing import Optional
 
 from pydantic import ValidationError
@@ -154,10 +154,12 @@ def _load_recent_documents(
     *,
     limit: int = 10,
 ) -> list[dict]:
-    """读取 text_document 最近 limit 份，按 published_at desc。
+    """读取 as_of 当天及之前最近 limit 份 text_document，按 published_at desc。
 
-    每份返回简化 dict（doc_id / source_type / doc_type / title /
-    published_at / content_text）。
+    点时严格：`published_at <= asof_date` 的过滤放在 SQL WHERE（LIMIT 之前），
+    否则会先取到 as_of 之后的最新文档、再被剔除，导致有大量未来文档的公司喂给
+    AI 的证据为空（裸判）。每份返回简化 dict
+    （doc_id / source_type / doc_type / title / published_at / content_text）。
     """
     rows = db.execute(
         select(TextDocument)
@@ -165,6 +167,8 @@ def _load_recent_documents(
             and_(
                 TextDocument.company_id == company_id,
                 TextDocument.published_at.isnot(None),
+                # 点时过滤须在 LIMIT 之前：< 次日零点 等价于 date() <= asof_date（含当天）
+                TextDocument.published_at < asof_date + timedelta(days=1),
             )
         )
         .order_by(TextDocument.published_at.desc())
