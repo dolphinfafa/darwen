@@ -40,7 +40,9 @@
 - 筛选历史删除：`DELETE /v2/my-runs/{id}`（FK 顺序级联清子表）+ MyRuns 删除按钮（端到端验证通过）。
 - 详情页 ROCE/EBIT/CapitalEmployed 表头 ⓘ 口径说明；原因标签接入全局 `.dtip` 悬浮释义。
 - 数据核对：Rocket(US_0001805284) `is_excluded=0` 未生效（全表 598 家无一排除，但其 ROCE 历年全 NULL 会被 ROCE 层自然过滤）。
-- PRD 同步到 **V2.2**；本会话 5 提交（`6498ca5`/`0b262f2`/`cbe4d72`/`d5efaac`/`8f7bdfb`）。详见 `milestones/2026-06-20.md`。
+- **后两层有效性修复**：修证据检索点时 bug（AI 此前喂入证据为 0 裸判全 PASS）+ 后两层改 AI
+  REVIEW/REJECT 出局（此前仅 REJECT），配合后两层现能基于真实证据有效过滤。
+- PRD 同步到 **V2.2**；本会话 8 提交（`6498ca5`/`0b262f2`/`cbe4d72`/`d5efaac`/`8f7bdfb`/`c50c302`/`6524b03`/`52fee38`）。详见 `milestones/2026-06-20.md`。
 
 ---
 

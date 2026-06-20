@@ -26,6 +26,15 @@
   `manual_action` 数据字段（详情展示是否人工干预过）。`auto_advance=False` 路径引擎仍在但无外部推进入口。
 - 其余沿用下方 2026-06-18 架构（层语义 / AI / 存活集 / 迁移均不变）。
 
+### 2026-06-20 后续：AI 风险层有效性修复
+
+用户实测后两层（稳健/风险）不过滤任何股票，查出两层叠加根因并修复：
+- **证据检索点时 bug**（`orchestrator._load_recent_documents`）：先 `LIMIT` 后 Python 点时过滤，
+  as_of 早于公司最新文档时喂给 AI 的证据为 0 → 裸判 PASS。修复：点时过滤移入 SQL WHERE。
+- **过滤标准**（`funnel_v2._eval_sturdiness`/`_eval_risk`）：改为 AI `REVIEW`/`REJECT` 出局、
+  `PASS`/`MONITOR` 通过（此前仅 REJECT 出局，后两层几乎不过滤）。
+- commit `6524b03` / `52fee38`，详见 `milestones/2026-06-20.md` 六节。
+
 ### 2026-06-18 架构演进（层定义与实现细节，仍现行；推进方式已被上方全自动取代）
 
 筛选流程已从 Q/R/V（质量/风险/估值）改为 **ROCE → 稳健性 → 风险性**：
