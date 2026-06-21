@@ -11,6 +11,20 @@
 - `milestones/2026-06-18.md` — **三层漏斗重构**（ROCE 可配置 / 分层 gate / AI 双层 / 我的股票池 / 详情页瘦身，11 章）
 - `milestones/2026-06-19.md` — AI 介入范围可选 + 漏斗两 bug 修复 + PRD V2.1
 - `milestones/2026-06-20.md` — **漏斗改全自动**（取消人工 gate + 移除 /advance /manual）+ 筛选历史删除 + 详情页/原因标签 tooltip
+- `milestones/2026-06-21.md` — **我的股票池改造**（平铺/最新价/真 TTM 市盈率/设首页）+ 按需拉取行情 + 漏斗页手风琴/过滤
+
+### 2026-06-21 前端 UX 增强 + 估值口径（现行，优先于下方）
+
+- **我的股票池（首页）**：取消分组、单一平铺表（`MyWatchlist.vue`），展示最新收盘价 + 市盈率(TTM)；
+  `/` redirect → `/my-watchlists`、导航置首位；详情页入池一键加默认池。
+  接口 `GET/DELETE /v2/watchlists/my-stocks`（合并所有池去重 + 行情）。
+- **PE 真 TTM**：`valuation._net_income_ttm` 用 YTD 差分（最近完整财年 + 本年最新 YTD − 去年同期 YTD），
+  替换年报代理，缺季报降级 `PE_TTM_ANNUAL_PROXY`；新增 `helpers.get_fact_series_asof`。
+- **按需拉取行情**：进详情页 / 我的股票池时拉最新收盘价（`services/quote.py` `refresh_quotes`：选主
+  security + 当天去重 + 美股批量 `ingest_us_latest_bulk` / A 股 `ingest_daily` + 容错）。详情页展示最新价/PE。
+- **漏斗结果页**（`FunnelResults.vue`）：三层 + 入选改手风琴折叠面板 + 多维搜索过滤（代码/名称/所在层/
+  市场/行业，命中自动展开）。
+- 详见 `milestones/2026-06-21.md`。
 
 ### 2026-06-20 架构演进（现行筛选流程，优先于下方历史路线图）
 

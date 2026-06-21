@@ -6,7 +6,7 @@
 
 | 工作流 | 用途 |
 |---|---|
-| `v2-implementation-roadmap.md` | 路线图 + **现行架构（2026-06-20 ROCE→稳健→风险 三层全自动漏斗）**；历史 M2-M7 供追溯 |
+| `v2-implementation-roadmap.md` | 路线图 + **现行架构（三层全自动漏斗；2026-06-21 我的股票池首页 + 最新价/真 TTM PE + 漏斗手风琴）**；历史 M2-M7 供追溯 |
 | `data-ingestion.md` | 数据接入工作流（SEC / Polygon / Tushare） |
 | `metric-computation.md` | 指标预计算工作流（ROCE 等） |
 | `ai-risk-layer.md` | AI 风险层调用、prompt 版本管理、失败回退 |
@@ -15,9 +15,12 @@
 
 > **现行筛选引擎**：`backend/screening/funnel_v2.py`（ROCE→稳健性→风险性 三层全自动连跑；
 > 2026-06-20 起 `auto_advance` 默认开，人工 gate 的 HTTP 层 `/advance`、`/manual` 已移除）。
-> AI 双层：`ai/orchestrator.analyze_layer(layer=sturdiness|risk)`。我的股票池：`api/watchlist.py`。
+> AI 双层：`ai/orchestrator.analyze_layer(layer=sturdiness|risk)`。
+> **我的股票池（前端首页）**：`api/watchlist.py` + `MyWatchlist.vue`，平铺无分组、展示最新收盘价 +
+> 真 TTM 市盈率；按需拉取行情 `services/quote.py`（进详情页/股票池时拉，当天去重+容错）。
+> 漏斗结果页 `FunnelResults.vue`：三层手风琴折叠 + 多维搜索过滤。
 > 旧 Q/R/V（`funnel.py`/`v_layer.py`、`ScreenConfig.vue`/`ScreenResults.vue`）保留 deprecated。
-> 详见 `milestones/2026-06-20.md`（架构演进）与 `2026-06-18.md`（层定义细节）。
+> 详见 `milestones/2026-06-21.md`（前端 UX + 估值口径）、`2026-06-20.md`（全自动架构）、`2026-06-18.md`（层定义）。
 
 ## 通用规则
 
