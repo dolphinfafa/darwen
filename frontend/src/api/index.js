@@ -96,4 +96,8 @@ export const addToWatchlist = body => api.post('/v2/watchlists/add-company', bod
 export const getMyStocks = () => api.get('/v2/watchlists/my-stocks')
 export const removeMyStock = companyId => api.delete(`/v2/watchlists/my-stocks/${companyId}`)
 
+// ───────── MCP 访问令牌 ─────────
+export const getMcpTokenStatus = () => api.get('/v1/user/mcp-token')
+export const createMcpToken = () => api.post('/v1/user/mcp-token')
+
 export default api

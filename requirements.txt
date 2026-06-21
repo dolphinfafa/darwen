@@ -21,6 +21,9 @@ boto3>=1.34.0
 # AI Providers
 openai>=1.30.0
 
+# MCP server（外部 agent 读股票池行情，streamable HTTP）
+mcp>=1.28.0
+
 # Data Processing
 pandas>=2.2.0
 numpy>=1.26.0

@@ -23,9 +23,13 @@ from backend.schemas.v2 import (
     DefaultProviderUpdateRequest,
 )
 from backend.services.auth import get_current_user
+from backend.services.mcp_auth import generate_mcp_token, has_mcp_token
 
 
 router = APIRouter(prefix="/v1/user", tags=["user-settings"])
+
+# MCP 端点对外路径（经 nginx /darwen/v2/ → 后端；前端用 origin 拼完整 URL）
+MCP_PATH = "/darwen/v2/mcp"
 
 
 def _masked_key(encrypted: str | None) -> str | None:
@@ -113,6 +117,31 @@ def set_default_provider(
     db.commit()
     db.refresh(db_user)
     return _status_response(db_user)
+
+
+@router.post("/mcp-token")
+def create_mcp_token(
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """生成 MCP 访问令牌（明文仅此一次返回，覆盖旧令牌）。外部 agent 凭此读股票池行情。"""
+    db_user = db.get(User, user.id)
+    if db_user is None:
+        raise HTTPException(404, "user not found")
+    token = generate_mcp_token(db, db_user)
+    return {"token": token, "mcp_path": MCP_PATH}
+
+
+@router.get("/mcp-token")
+def get_mcp_token_status(
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """是否已生成 MCP 令牌（不返回明文）。"""
+    db_user = db.get(User, user.id)
+    if db_user is None:
+        raise HTTPException(404, "user not found")
+    return {"has_token": has_mcp_token(db_user), "mcp_path": MCP_PATH}
 
 
 def _status_response(user: User) -> APIKeyStatusResponse:

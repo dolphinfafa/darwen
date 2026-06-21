@@ -57,7 +57,10 @@
 - **按需拉取行情**：进详情页 / 我的股票池页面时拉最新收盘价（yfinance 批量 / Tushare，当天去重 + 容错），
   详情页头部新增展示最新价/PE；新增 `services/quote.py` + `market_data.ingest_us_latest(_bulk)`。
 - **漏斗结果页交互**：`FunnelResults.vue` 三层改手风琴折叠面板 + 多维搜索过滤（代码/名称/所在层/市场/行业，
-  命中自动展开）；纯前端。详见 `milestones/2026-06-21.md`。
+  命中自动展开）；纯前端。
+- **MCP server**：外部 agent 凭 per-user 令牌（`user.mcp_token_hash`，账户设置生成）连 streamable HTTP MCP
+  读「我的股票池」最新价 + 市盈率（工具 `list_watchlist_quotes`）。`backend/mcp_server.py` 挂 `/v2/mcp`
+  （经 nginx `/darwen/v2/mcp/`，无需开端口）。详见 `milestones/2026-06-21.md`。
 - PRD 同步到 **V2.2**；本会话 8 提交（`6498ca5`/`0b262f2`/`cbe4d72`/`d5efaac`/`8f7bdfb`/`c50c302`/`6524b03`/`52fee38`）。详见 `milestones/2026-06-20.md`。
 
 ---

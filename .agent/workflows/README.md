@@ -19,6 +19,8 @@
 > **我的股票池（前端首页）**：`api/watchlist.py` + `MyWatchlist.vue`，平铺无分组、展示最新收盘价 +
 > 真 TTM 市盈率；按需拉取行情 `services/quote.py`（进详情页/股票池时拉，当天去重+容错）。
 > 漏斗结果页 `FunnelResults.vue`：三层手风琴折叠 + 多维搜索过滤。
+> **MCP server**（`backend/mcp_server.py`，挂 `/v2/mcp` → `https://<域名>/darwen/v2/mcp/`）：外部 agent 凭
+> per-user 令牌（账户设置生成，`user.mcp_token_hash`）读股票池最新价/PE，工具 `list_watchlist_quotes`。
 > 旧 Q/R/V（`funnel.py`/`v_layer.py`、`ScreenConfig.vue`/`ScreenResults.vue`）保留 deprecated。
 > 详见 `milestones/2026-06-21.md`（前端 UX + 估值口径）、`2026-06-20.md`（全自动架构）、`2026-06-18.md`（层定义）。
 

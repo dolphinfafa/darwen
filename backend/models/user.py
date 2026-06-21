@@ -36,3 +36,6 @@ class User(Base):
         default="chatgpt",
         comment="默认 AI 提供商",
     )
+    mcp_token_hash: Mapped[str | None] = mapped_column(
+        String(64), index=True, comment="MCP 访问令牌的 sha256（外部 agent 凭此读股票池行情）"
+    )
