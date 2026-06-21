@@ -33,6 +33,10 @@ frontend/dist/
 
 # Database
 *.sql.bak
+# 误生成的本地 SQLite（项目用 MySQL，不应有 sqlite 落盘）
+*.db
+*.sqlite
+*.sqlite3
 
 # Logs
 *.log
