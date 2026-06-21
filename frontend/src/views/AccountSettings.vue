@@ -46,30 +46,13 @@
       </label>
     </section>
 
-    <section class="card">
-      <h2>MCP 访问令牌</h2>
-      <p class="sub">为外部 AI agent（Claude 等）生成访问令牌。配置后，agent 即可读取你「我的股票池」每只股票的最新收盘价与市盈率，在股价跌到你满意的价位时提醒你买入。</p>
-      <p class="bound">
-        MCP URL：<code class="tok">{{ mcpUrl }}</code>
-        <button class="copy" @click="copy(mcpUrl)">复制</button>
-      </p>
-      <p v-if="mcpToken" class="bound new-tok">
-        新令牌（仅此一次显示，请立即复制保存）：<code class="tok">{{ mcpToken }}</code>
-        <button class="copy" @click="copy(mcpToken)">复制</button>
-      </p>
-      <p v-else-if="mcpHasToken" class="sub">已生成令牌（明文不可再查；重新生成将覆盖旧令牌）。</p>
-      <button class="gen" :disabled="genning" @click="genMcp">
-        {{ genning ? '生成中…' : (mcpHasToken ? '重新生成令牌' : '生成令牌') }}
-      </button>
-    </section>
-
     <div v-if="msg" class="msg" :class="msgType">{{ msg }}</div>
   </div>
 </template>
 
 <script setup>
 import { onMounted, ref } from 'vue'
-import { bindApiKey, getApiKeyStatus, setDefaultProvider, unbindApiKey, getMcpTokenStatus, createMcpToken } from '../api'
+import { bindApiKey, getApiKeyStatus, setDefaultProvider, unbindApiKey } from '../api'
 
 const status = ref(null)
 const chatgptKey = ref('')
@@ -80,49 +63,10 @@ const saving = ref(null)  // 'chatgpt' | 'minimax' | null
 const msg = ref('')
 const msgType = ref('')
 
-// MCP 令牌
-const mcpHasToken = ref(false)
-const mcpToken = ref('')
-const mcpUrl = ref('')
-const genning = ref(false)
-
 async function refresh() {
   const { data } = await getApiKeyStatus()
   status.value = data
   defaultProvider.value = data.default_provider
-}
-
-async function refreshMcp() {
-  try {
-    const { data } = await getMcpTokenStatus()
-    mcpHasToken.value = data.has_token
-    mcpUrl.value = window.location.origin + data.mcp_path
-  } catch { /* 忽略 */ }
-}
-
-async function genMcp() {
-  if (mcpHasToken.value && !confirm('重新生成会使旧令牌立即失效，确认？')) return
-  genning.value = true
-  msg.value = ''
-  try {
-    const { data } = await createMcpToken()
-    mcpToken.value = data.token
-    mcpUrl.value = window.location.origin + data.mcp_path
-    mcpHasToken.value = true
-    msg.value = 'MCP 令牌已生成，请立即复制保存'
-    msgType.value = 'ok'
-  } catch (e) {
-    msg.value = e.response?.data?.detail || e.message
-    msgType.value = 'err'
-  } finally {
-    genning.value = false
-  }
-}
-
-function copy(t) {
-  navigator.clipboard?.writeText(t)
-  msg.value = '已复制到剪贴板'
-  msgType.value = 'ok'
 }
 
 async function bind(provider) {
@@ -174,7 +118,7 @@ async function changeDefault() {
   }
 }
 
-onMounted(() => { refresh(); refreshMcp() })
+onMounted(refresh)
 </script>
 
 <style scoped>

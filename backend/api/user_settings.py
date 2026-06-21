@@ -32,6 +32,13 @@ router = APIRouter(prefix="/v1/user", tags=["user-settings"])
 MCP_PATH = "/darwen/v2/mcp"
 
 
+def _mcp_url() -> str | None:
+    """配置了 mcp_public_base_url 则返回完整 URL（dev/prod 各自 .env）；否则 None 让前端用 origin 拼。"""
+    from backend.config import get_settings
+    base = (get_settings().mcp_public_base_url or "").rstrip("/")
+    return f"{base}{MCP_PATH}" if base else None
+
+
 def _masked_key(encrypted: str | None) -> str | None:
     if not encrypted:
         return None
@@ -129,7 +136,7 @@ def create_mcp_token(
     if db_user is None:
         raise HTTPException(404, "user not found")
     token = generate_mcp_token(db, db_user)
-    return {"token": token, "mcp_path": MCP_PATH}
+    return {"token": token, "mcp_path": MCP_PATH, "mcp_url": _mcp_url()}
 
 
 @router.get("/mcp-token")
@@ -141,7 +148,7 @@ def get_mcp_token_status(
     db_user = db.get(User, user.id)
     if db_user is None:
         raise HTTPException(404, "user not found")
-    return {"has_token": has_mcp_token(db_user), "mcp_path": MCP_PATH}
+    return {"has_token": has_mcp_token(db_user), "mcp_path": MCP_PATH, "mcp_url": _mcp_url()}
 
 
 def _status_response(user: User) -> APIKeyStatusResponse:

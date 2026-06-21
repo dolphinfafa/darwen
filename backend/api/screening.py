@@ -168,10 +168,13 @@ def get_filing_url(
     company_id: str,
     year: int = Query(..., description="财年年份"),
     form: str = Query("10-K", description="10-K / 10-Q / 8-K"),
-    user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """按 (company, year, form_type) 查 filing，302 redirect 到 SEC 原文链接。"""
+    """按 (company, year, form_type) 查 filing，302 redirect 到 SEC 原文链接。
+
+    公开端点（不鉴权）：前端用 <a target=_blank> 直接打开，浏览器导航不带 Authorization；
+    且仅重定向到 SEC 公开文件，无敏感数据。
+    """
     from backend.models.filing import Filing
     from datetime import date as date_cls
     from sqlalchemy import and_

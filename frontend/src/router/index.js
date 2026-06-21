@@ -13,6 +13,7 @@ const routes = [
   { path: '/my-watchlists', name: 'MyWatchlist', component: () => import('../views/MyWatchlist.vue') },
   { path: '/run/:runId/company/:companyId', name: 'CompanyDetailV2', component: () => import('../views/CompanyDetailV2.vue') },
   { path: '/account', name: 'AccountSettings', component: () => import('../views/AccountSettings.vue') },
+  { path: '/mcp', name: 'MCP', component: () => import('../views/MCP.vue') },
   // 保留 admin
   { path: '/admin', name: 'Admin', component: () => import('../views/Admin.vue'), meta: { admin: true } },
 ]

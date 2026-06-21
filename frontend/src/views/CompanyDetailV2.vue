@@ -50,7 +50,8 @@
               <td>
                 <a v-if="detail.market === 'US'" class="src" :href="filingUrl(detail.company_id, periodYear(r.period_end), '10-K')"
                    target="_blank" rel="noopener" title="SEC EDGAR 10-K 原文">📄 10-K</a>
-                <span v-else class="muted small">巨潮资讯网</span>
+                <a v-else class="src" :href="cninfoUrl(detail.ticker)"
+                   target="_blank" rel="noopener" title="巨潮资讯网 · 按代码检索该股公告/财报">📄 巨潮公告</a>
               </td>
             </tr>
           </tbody>
@@ -155,6 +156,7 @@ const PRINCIPLE_LABEL = {
 }
 
 function periodYear(p) { return parseInt(String(p).slice(0, 4), 10) }
+function cninfoUrl(code) { return `http://www.cninfo.com.cn/new/fulltextSearch?keyWord=${encodeURIComponent(code || '')}` }
 function fmtPct(v) { return v == null ? '-' : (v * 100).toFixed(1) + '%' }
 function fmtBn(v) { return v == null ? '-' : (Math.abs(v) >= 1e9 ? (v / 1e9).toFixed(2) + 'B' : (v / 1e6).toFixed(1) + 'M') }
 function fmtPrice(v) { return v == null ? '-' : Number(v).toFixed(2) }
