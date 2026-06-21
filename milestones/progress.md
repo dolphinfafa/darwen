@@ -1,6 +1,6 @@
 # Darwen 项目进度总览
 
-> 最后更新：2026-06-20
+> 最后更新：2026-06-21
 > 项目方向：V2 股票筛选系统（基于 Pulak Prasad《What I Learned About Investing from Darwin》）
 
 ---
@@ -44,6 +44,16 @@
   REVIEW/REJECT 出局（此前仅 REJECT），配合后两层现能基于真实证据有效过滤。
 - **TTM 口径已评估、决定暂不做**：维持年报口径（as_of 2025-12-31 已是最新完整财年），避免季度
   噪声/数据口径风险，等 FY2026 年报齐备后按 SOP 推进。详见 `milestones/2026-06-20.md` 八节。
+
+### 2026-06-21 「我的股票池」改造
+
+- **取消分组**：`MyWatchlist.vue` 重写为单一平铺表格（合并所有池去重）；新增 `GET/DELETE
+  /v2/watchlists/my-stocks`；详情页入池简化为一键加默认池。
+- **展示最新收盘价 + 市盈率**：复用 `compute_valuation_snapshot`，最新价取 market_bar ≤today 最新。
+- **PE 改真 TTM**：`valuation.py` `net_income_ttm` 由「年报代理」改为真 4 季 TTM（YTD 差分：最近
+  完整财年 + 本年最新YTD − 去年同期YTD；缺季报降级标 `PE_TTM_ANNUAL_PROXY`）。新增 helper
+  `get_fact_series_asof`。验证 AMD TTM=5.009B（非年报 4.335）。
+- **设为首页**：`/` redirect → `/my-watchlists`，导航置首位。详见 `milestones/2026-06-21.md`。
 - PRD 同步到 **V2.2**；本会话 8 提交（`6498ca5`/`0b262f2`/`cbe4d72`/`d5efaac`/`8f7bdfb`/`c50c302`/`6524b03`/`52fee38`）。详见 `milestones/2026-06-20.md`。
 
 ---

@@ -13,6 +13,7 @@ from backend.models.user import User
 from backend.models.watchlist import Watchlist, WatchlistItem
 from backend.schemas.v2 import (
     AddToWatchlistRequest,
+    MyStockOut,
     WatchlistCreateRequest,
     WatchlistDetailResponse,
     WatchlistItemAddRequest,
@@ -50,6 +51,63 @@ def list_watchlists(user: User = Depends(get_current_user), db: Session = Depend
         select(Watchlist).where(Watchlist.user_id == user.id).order_by(Watchlist.created_at)
     ).scalars().all()
     return [_summary(db, w) for w in wls]
+
+
+@router.get("/watchlists/my-stocks", response_model=list[MyStockOut])
+def list_my_stocks(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """「我的股票池」平铺视图：合并当前用户所有池的股票（去重），带最新收盘价 + PE(TTM)。
+
+    取消分组后的统一列表入口。行情/估值复用 valuation.compute_valuation_snapshot
+    （最新收盘价取 market_bar ≤ today 最新一条；pe_ttm 为真 4 季 TTM）。
+    """
+    from datetime import date as _date
+    from backend.metrics.valuation import compute_valuation_snapshot
+
+    rows = db.execute(
+        select(WatchlistItem, Company, Security)
+        .join(Watchlist, Watchlist.id == WatchlistItem.watchlist_id)
+        .join(Company, WatchlistItem.company_id == Company.company_id)
+        .join(Security, Security.company_id == Company.company_id, isouter=True)
+        .where(Watchlist.user_id == user.id)
+        .order_by(WatchlistItem.added_at.desc())
+    ).all()
+
+    today = _date.today()
+    seen: set[str] = set()
+    out: list[MyStockOut] = []
+    for it, c, sec in rows:
+        if it.company_id in seen:
+            continue
+        seen.add(it.company_id)
+        close = td = pe = None
+        try:
+            snap = compute_valuation_snapshot(db, it.company_id, today, market=c.market)
+            close, td, pe = snap.latest_close, snap.latest_trade_date, snap.pe_ttm
+        except Exception:  # noqa: BLE001  行情/估值失败不阻塞列表
+            pass
+        out.append(MyStockOut(
+            company_id=it.company_id,
+            ticker=(sec.ticker if sec else (c.stock_code or c.cik)),
+            name=c.name, market=c.market, industry_name=c.industry_name,
+            note=it.note, source_run_id=it.source_run_id, added_at=it.added_at,
+            latest_close=close, latest_trade_date=td, pe_ttm=pe, as_of=today,
+        ))
+    return out
+
+
+@router.delete("/watchlists/my-stocks/{company_id}")
+def remove_my_stock(company_id: str, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """从「我的股票池」移除该股票（当前用户所有池内一并移除）。"""
+    db.execute(
+        delete(WatchlistItem).where(
+            WatchlistItem.company_id == company_id,
+            WatchlistItem.watchlist_id.in_(
+                select(Watchlist.id).where(Watchlist.user_id == user.id)
+            ),
+        )
+    )
+    db.commit()
+    return {"ok": True}
 
 
 @router.post("/watchlists", response_model=WatchlistSummary)

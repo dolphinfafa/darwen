@@ -1,9 +1,9 @@
 <template>
   <nav v-if="!isLoginPage" class="nav">
     <router-link to="/" class="nav-brand">Darwen V2</router-link>
+    <router-link to="/my-watchlists">我的股票池</router-link>
     <router-link to="/universe">新建筛选</router-link>
     <router-link to="/my-runs">我的筛选</router-link>
-    <router-link to="/my-watchlists">我的股票池</router-link>
     <router-link to="/account">账户设置</router-link>
     <router-link v-if="currentUser?.is_admin" to="/admin">管理</router-link>
     <span class="nav-spacer"></span>

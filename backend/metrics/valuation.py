@@ -2,8 +2,9 @@
 """估值指标（PRD V 层依赖）。
 
 输出（截面，as_of_date 一行）：
-- pe_ttm = market_cap / net_income_annual_latest
-  （v1 简化：用最近一年年报净利润作 TTM 代理；M2 末尾可升级为 4 季严格 TTM）
+- pe_ttm = market_cap / net_income_ttm
+  （net_income_ttm 为真 4 季 TTM，YTD 差分法：最近完整财年 + 本年最新YTD − 去年同期YTD；
+   缺季报数据时降级回最近年报净利润，标 PE_TTM_ANNUAL_PROXY。见 _net_income_ttm）
 - ev_ebit = (market_cap + total_debt - cash - short_term_investments) / EBIT_latest
   （备用估值，与 PE 互补；轻资产服务业 PE 失真时参考）
 - market_cap = close × shares_outstanding（皆取 ≤ as_of_date 最新）
@@ -17,6 +18,7 @@ PRD V 层触发（V 层判定，本模块只输出原值）：
 - NO_MARKET_PRICE              market_bar 无 as_of_date 前数据
 - NO_SHARES_OUTSTANDING        shares_outstanding 字段缺
 - NEGATIVE_NET_INCOME          净利润 ≤ 0，pe_ttm 无意义置 None
+- PE_TTM_ANNUAL_PROXY          TTM 季报数据不足，降级用最近年报净利润
 - EBIT_MISSING                 EBIT 缺
 """
 from __future__ import annotations
@@ -35,6 +37,7 @@ from backend.metrics.helpers import (
     FactValue,
     _get_market,
     get_fact_value_asof,
+    get_fact_series_asof,
     get_fiscal_year_end,
     get_annual_periods,
 )
@@ -125,6 +128,45 @@ def _get_latest_close(
     return float(row.close), row.trade_date, mc
 
 
+def _net_income_ttm(
+    db: Session,
+    company_id: str,
+    asof_date: date,
+    market: str,
+    fy_end_month: int,
+) -> tuple[Optional[float], Optional[str], list[str]]:
+    """真 TTM 净利润（YTD 差分法）。返回 (value, 主血缘 fact_id, notes)。
+
+    fact 表 net_income 多为 YTD 累计值（年初至今），故：
+    - 最新一期即年报（period_end 月 == 财年末月）→ 直接用其全年值；
+    - 否则为季报 YTD → TTM = 最近完整财年 + 本年最新 YTD − 去年同期 YTD；
+    - 关键项缺失 → 降级回最近完整财年（notes 加 PE_TTM_ANNUAL_PROXY）。
+    """
+    series = get_fact_series_asof(db, company_id, "net_income", asof_date, market=market)
+    if not series:
+        return None, None, ["NET_INCOME_MISSING"]
+    cur = series[0]  # period_end 最大（最新一期）
+    if cur.period_end.month == fy_end_month:
+        return cur.value, cur.fact_id, []  # 最新就是年报，即全年值
+    # 季报 YTD：TTM = 最近完整财年 + 本年最新 YTD − 去年同期 YTD
+    cur_year = cur.period_end.year
+    fy_last = next(
+        (f for f in series
+         if f.period_end.month == fy_end_month and f.period_end < date(cur_year, 1, 1)),
+        None,
+    )
+    ytd_prior = next(
+        (f for f in series
+         if f.period_end.month == cur.period_end.month and f.period_end.year == cur_year - 1),
+        None,
+    )
+    if fy_last is not None and ytd_prior is not None:
+        return fy_last.value + cur.value - ytd_prior.value, cur.fact_id, []
+    if fy_last is not None:  # 降级：回退最近完整财年
+        return fy_last.value, fy_last.fact_id, ["PE_TTM_ANNUAL_PROXY"]
+    return None, None, ["NET_INCOME_MISSING"]
+
+
 def compute_valuation_snapshot(
     db: Session,
     company_id: str,
@@ -170,17 +212,19 @@ def compute_valuation_snapshot(
     elif snap.latest_close is not None and snap.shares_outstanding is not None:
         snap.market_cap = snap.latest_close * snap.shares_outstanding
 
-    # 4. net_income 取最近年报作 TTM proxy（M2.4 v1 简化，未做严格 4 季加总）
-    ni_fv = get_fact_value_asof(
-        db, company_id, "net_income", asof_date,
-        market=market, annual_only=True, fiscal_year_end_month=fy_end_month,
+    # 4. net_income TTM（真 4 季 TTM，YTD 差分法；缺失降级回最近年报）
+    ttm_val, ttm_fact_id, ttm_notes = _net_income_ttm(
+        db, company_id, asof_date, market, fy_end_month,
     )
-    if not ni_fv.is_hit:
-        snap.notes.append("NET_INCOME_MISSING")
+    snap.notes.extend(ttm_notes)
+    if ttm_val is None:
+        if "NET_INCOME_MISSING" not in snap.notes:
+            snap.notes.append("NET_INCOME_MISSING")
     else:
-        snap.net_income_ttm = ni_fv.value
-        snap.source_fact_ids["net_income"] = ni_fv.fact_id
-        if ni_fv.value <= 0:
+        snap.net_income_ttm = ttm_val
+        if ttm_fact_id:
+            snap.source_fact_ids["net_income"] = ttm_fact_id
+        if ttm_val <= 0:
             snap.notes.append("NEGATIVE_NET_INCOME")
 
     # 5. pe_ttm

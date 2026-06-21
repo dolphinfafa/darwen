@@ -3,7 +3,7 @@ import { createRouter, createWebHistory } from 'vue-router'
 const routes = [
   { path: '/login', name: 'Login', component: () => import('../views/Login.vue'), meta: { public: true } },
   // V2 三层漏斗筛选
-  { path: '/', redirect: '/universe' },
+  { path: '/', redirect: '/my-watchlists' },
   { path: '/universe', name: 'UniverseConfig', component: () => import('../views/UniverseConfig.vue') },
   // /config（ScreenConfig 配置门槛页）已下线：ROCE 门槛内嵌选股页，筛选直接从 /universe 启动
   { path: '/run/:runId', name: 'ScreenRun', component: () => import('../views/ScreenRun.vue') },

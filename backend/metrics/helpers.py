@@ -163,6 +163,78 @@ def get_fact_value_asof(
     return FactValue(value=None)
 
 
+def get_fact_series_asof(
+    db: Session,
+    company_id: str,
+    canonical: str,
+    asof_date: date,
+    *,
+    market: Optional[str] = None,
+    disclosure_lag_days: int = 120,
+) -> list[FactValue]:
+    """取 ≤ asof_date 点时可见的逐期 fact 序列（含季报），按 period_end 降序、每期一条。
+
+    复用 get_fact_value_asof 的三轨可见性；取首个有数据的 source/concept 的完整序列，
+    同一 period_end 多条时保留 accepted_date 最新一条。用于 TTM 等需逐季序列的口径。
+    """
+    if market is None:
+        market = _get_market(db, company_id)
+        if market is None:
+            return []
+
+    from sqlalchemy import func as sa_func  # noqa: F401  (与其它函数保持一致的局部导入风格)
+    from datetime import timedelta
+
+    lag_cutoff = asof_date - timedelta(days=disclosure_lag_days)
+    visibility = (
+        (Fact.accepted_date.isnot(None)) & (Fact.accepted_date <= asof_date)
+    ) | (
+        (Fact.accepted_date.is_(None)) & (Fact.available_date.isnot(None)) &
+        (Fact.available_date <= asof_date)
+    ) | (
+        (Fact.accepted_date.is_(None)) & (Fact.available_date.is_(None)) &
+        (Fact.period_end <= lag_cutoff)
+    )
+
+    for src in source_chain(market):
+        for concept in candidate_concepts(canonical, src):
+            rows = db.execute(
+                select(Fact.fact_id, Fact.value, Fact.period_end)
+                .where(
+                    and_(
+                        Fact.company_id == company_id,
+                        Fact.source_type == src,
+                        Fact.concept == concept,
+                        Fact.value.isnot(None),
+                        visibility,
+                    )
+                )
+                .order_by(
+                    Fact.period_end.desc(),
+                    case((Fact.accepted_date.is_(None), 1), else_=0),
+                    Fact.accepted_date.desc(),
+                )
+            ).all()
+            if rows:
+                seen: set[date] = set()
+                out: list[FactValue] = []
+                for r in rows:
+                    if r.period_end in seen:
+                        continue
+                    seen.add(r.period_end)
+                    out.append(
+                        FactValue(
+                            value=float(r.value),
+                            fact_id=r.fact_id,
+                            source_type=src,
+                            source_concept=concept,
+                            period_end=r.period_end,
+                        )
+                    )
+                return out
+    return []
+
+
 def get_annual_periods(
     db: Session,
     company_id: str,

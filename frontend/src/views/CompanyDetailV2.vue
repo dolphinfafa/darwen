@@ -7,7 +7,7 @@
       <header class="hdr">
         <div class="title-row">
           <h1>{{ detail.name }} <span class="ticker">{{ detail.ticker || '-' }}</span></h1>
-          <button class="btn-add" @click="openAdd">➕ 进入我的股票池</button>
+          <button class="btn-add" :disabled="adding" @click="addToDefault">{{ addMsg || '➕ 加入我的股票池' }}</button>
         </div>
         <div class="muted">{{ detail.market }} · {{ detail.industry_name || '-' }} · {{ detail.instrument_type }}</div>
         <div class="status-row">
@@ -15,20 +15,6 @@
           <span v-if="detail.result.q_strong_track" class="tag-strong">10Y 强通过</span>
         </div>
         <div class="codes"><ReasonPill v-for="c in detail.result.reason_codes" :key="c" :code="c" /></div>
-
-        <!-- 入池面板 -->
-        <div v-if="showAdd" class="add-panel">
-          <div class="add-row">
-            <select v-model="addTarget">
-              <option value="">＋ 新建股票池…</option>
-              <option v-for="w in watchlists" :key="w.id" :value="w.id">{{ w.name }}（{{ w.item_count }}）</option>
-            </select>
-            <input v-if="!addTarget" v-model="newWlName" placeholder="新池名称（默认：我的股票池）" />
-            <button class="btn" :disabled="adding" @click="confirmAdd">{{ adding ? '...' : '确定加入' }}</button>
-            <button class="btn ghost" @click="showAdd = false">取消</button>
-          </div>
-          <div v-if="addMsg" class="add-msg">{{ addMsg }}</div>
-        </div>
       </header>
 
       <!-- 历史 ROCE（含出处：10-K 原文）-->
@@ -128,7 +114,7 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
-import { getCompanyDetail, filingUrl, getEvidence, getWatchlists, addToWatchlist } from '../api'
+import { getCompanyDetail, filingUrl, getEvidence, addToWatchlist } from '../api'
 import { ensureReasonLabels } from '../composables/useReasonLabels'
 import ReasonPill from '../components/ReasonPill.vue'
 
@@ -142,11 +128,7 @@ const error = ref('')
 const lineageOpen = ref(false)
 const evidence = ref({})  // doc_id -> {title, url, ...}
 
-// 入池
-const showAdd = ref(false)
-const watchlists = ref([])
-const addTarget = ref('')
-const newWlName = ref('')
+// 入池（一键加默认池「我的股票池」）
 const adding = ref(false)
 const addMsg = ref('')
 
@@ -199,20 +181,14 @@ function collectDocIds(d) {
   return [...ids]
 }
 
-async function openAdd() {
-  showAdd.value = true; addMsg.value = ''
-  try { const { data } = await getWatchlists(); watchlists.value = data } catch {}
-}
-async function confirmAdd() {
+async function addToDefault() {
+  if (adding.value) return
   adding.value = true; addMsg.value = ''
   try {
-    const body = { company_id: companyId, source_run_id: runId }
-    if (addTarget.value) body.watchlist_id = addTarget.value
-    else body.watchlist_name = newWlName.value.trim() || '我的股票池'
-    const { data } = await addToWatchlist(body)
-    addMsg.value = `已加入「${data.name}」（共 ${data.item_count} 只）`
+    const { data } = await addToWatchlist({ company_id: companyId, source_run_id: runId })
+    addMsg.value = `✓ 已加入（${data.item_count} 只）`
   } catch (e) {
-    addMsg.value = '加入失败：' + (e.response?.data?.detail || e.message)
+    addMsg.value = '加入失败'
   } finally { adding.value = false }
 }
 
@@ -245,19 +221,13 @@ onMounted(async () => {
 .hdr h1 { margin: 0; display: flex; align-items: baseline; gap: 12px; }
 .ticker { font-size: 1rem; color: #8888a0; font-family: ui-monospace, Menlo, monospace; }
 .btn-add { padding: 8px 16px; border: none; border-radius: 8px; background: #4285f4; color: #fff; cursor: pointer; white-space: nowrap; }
+.btn-add:disabled { opacity: .6; cursor: default; }
 .status-row { margin: 12px 0; display: flex; gap: 10px; align-items: center; }
 .result-badge { padding: 4px 14px; border-radius: 14px; font-weight: 600; font-size: 0.9rem; }
 .result-badge.green { background: #d6f5e0; color: #176b3a; }
 .result-badge.red { background: #fde0e0; color: #c00; }
 .tag-strong { background: #4285f4; color: #fff; padding: 2px 8px; border-radius: 4px; font-size: 0.75rem; }
 .codes { margin-top: 8px; }
-.add-panel { margin-top: 12px; padding: 12px; background: #f5f9ff; border: 1px solid #d6e7f5; border-radius: 8px; }
-.add-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
-.add-row select, .add-row input { padding: 6px 10px; border: 1px solid #ccc; border-radius: 6px; }
-.btn { padding: 6px 14px; border: 1px solid #4285f4; background: #4285f4; color: #fff; border-radius: 6px; cursor: pointer; }
-.btn.ghost { background: #fff; color: #4285f4; }
-.btn:disabled { opacity: .5; }
-.add-msg { margin-top: 8px; font-size: 0.85rem; color: #176b3a; }
 .card { padding: 18px; border: 1px solid #e0e0e8; border-radius: 10px; background: #fff; margin: 16px 0; }
 .card h2 { margin: 0 0 12px 0; }
 .clickable { cursor: pointer; }

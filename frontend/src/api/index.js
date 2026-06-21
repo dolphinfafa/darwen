@@ -93,5 +93,7 @@ export const deleteWatchlist = id => api.delete(`/v2/watchlists/${id}`)
 export const getWatchlistDetail = id => api.get(`/v2/watchlists/${id}`)
 export const removeWatchlistItem = (id, companyId) => api.delete(`/v2/watchlists/${id}/items/${companyId}`)
 export const addToWatchlist = body => api.post('/v2/watchlists/add-company', body)
+export const getMyStocks = () => api.get('/v2/watchlists/my-stocks')
+export const removeMyStock = companyId => api.delete(`/v2/watchlists/my-stocks/${companyId}`)
 
 export default api

@@ -239,6 +239,22 @@ class WatchlistDetailResponse(BaseModel):
     items: list[WatchlistItemOut] = []
 
 
+class MyStockOut(BaseModel):
+    """「我的股票池」平铺视图：合并所有池去重，带最新收盘价 + PE(TTM)。"""
+    company_id: str
+    ticker: Optional[str] = None
+    name: str
+    market: str
+    industry_name: Optional[str] = None
+    note: Optional[str] = None
+    source_run_id: Optional[int] = None
+    added_at: datetime
+    latest_close: Optional[float] = None
+    latest_trade_date: Optional[date] = None
+    pe_ttm: Optional[float] = None
+    as_of: date
+
+
 # ============ 三层漏斗（funnel_v2）============
 
 class FunnelCompany(BaseModel):
