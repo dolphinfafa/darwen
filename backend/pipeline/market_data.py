@@ -62,6 +62,80 @@ def ingest_us_prices(db: Session, ticker: str, security_id: str, start: str = "2
     return len(batch)
 
 
+def _safe_float(val):
+    try:
+        v = float(val)
+        return v if pd.notna(v) else None
+    except (ValueError, TypeError):
+        return None
+
+
+def _upsert_us_bars(db: Session, security_id: str, df) -> int:
+    """把 yfinance df 增量写入 market_bar（按 trade_date 去重，已有跳过）。"""
+    if df is None or df.empty:
+        return 0
+    if isinstance(df.columns, pd.MultiIndex):
+        df.columns = df.columns.get_level_values(0)
+    existing = set(
+        r[0] for r in db.execute(
+            select(MarketBar.trade_date).where(MarketBar.security_id == security_id)
+        ).fetchall()
+    )
+    batch = []
+    for idx, row in df.iterrows():
+        td = idx.date() if hasattr(idx, "date") else idx
+        if td in existing:
+            continue
+        close = _safe_float(row.get("Close"))
+        if close is None:
+            continue
+        batch.append(MarketBar(
+            security_id=security_id, trade_date=td,
+            open=_safe_float(row.get("Open")), high=_safe_float(row.get("High")),
+            low=_safe_float(row.get("Low")), close=close,
+            volume=_safe_float(row.get("Volume")), market_cap=None,
+        ))
+    if batch:
+        db.add_all(batch)
+        db.commit()
+    return len(batch)
+
+
+def ingest_us_latest(db: Session, ticker: str, security_id: str) -> int:
+    """按需拉美股最近 5 天日线（取最新收盘价），增量 upsert。"""
+    try:
+        df = yf.download(ticker, period="5d", auto_adjust=True, progress=False)
+    except Exception as e:  # noqa: BLE001
+        logger.warning(f"{ticker} yfinance latest 失败: {e}")
+        return 0
+    return _upsert_us_bars(db, security_id, df)
+
+
+def ingest_us_latest_bulk(db: Session, items: list[tuple[str, str]]) -> int:
+    """批量拉多只美股最近 5 天（一次 yf.download），增量 upsert。items=[(ticker, security_id)]。"""
+    items = [(t, s) for t, s in items if t]
+    if not items:
+        return 0
+    tickers = [t for t, _ in items]
+    try:
+        df = yf.download(tickers, period="5d", auto_adjust=True, progress=False, group_by="ticker")
+    except Exception as e:  # noqa: BLE001
+        logger.warning(f"批量 yfinance latest 失败({len(tickers)} 只): {e}")
+        return 0
+    if df is None or df.empty:
+        return 0
+    total = 0
+    multi = isinstance(df.columns, pd.MultiIndex)
+    lvl0 = set(df.columns.get_level_values(0)) if multi else set()
+    for ticker, sid in items:
+        try:
+            sub = df[ticker].copy() if (multi and ticker in lvl0) else df
+            total += _upsert_us_bars(db, sid, sub)
+        except Exception as e:  # noqa: BLE001
+            logger.warning(f"{ticker} 批量解析失败: {e}")
+    return total
+
+
 def ingest_cn_prices(db: Session, ticker: str, security_id: str, start: str = "20080101") -> int:
     """通过 akshare 拉取单只A股历史日线（前复权）"""
     try:

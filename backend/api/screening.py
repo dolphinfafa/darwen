@@ -585,6 +585,10 @@ def get_company_detail(
         raise HTTPException(404, "company not found")
     ticker = db.scalar(select(Security.ticker).where(Security.company_id == company_id))
 
+    # 进详情页按需刷新最新行情（当天去重 + 容错；失败降级用库存值）
+    from backend.services.quote import refresh_quote
+    refresh_quote(db, company_id)
+
     asof = run.as_of_date
     roce_series = _series_for(
         db, company_id, "roce_v1",
@@ -607,22 +611,17 @@ def get_company_detail(
         ("shares_outstanding",),
         asof,
     )
-    val_rows = db.execute(
-        select(MetricPeriodic.period_end, MetricPeriodic.metric_name, MetricPeriodic.value)
-        .where(
-            (MetricPeriodic.company_id == company_id)
-            & (MetricPeriodic.formula_version == "valuation_v1")
-            & (MetricPeriodic.period_end <= asof)
-        )
-        .order_by(MetricPeriodic.period_end.desc())
-    ).all()
-    val_snap: dict = {}
-    if val_rows:
-        latest_date = val_rows[0].period_end
-        val_snap["as_of"] = latest_date.isoformat()
-        for r in val_rows:
-            if r.period_end == latest_date:
-                val_snap[r.metric_name] = float(r.value) if r.value is not None else None
+    # 估值用实时口径：刚按需刷新行情后，用 today 算最新价 + 真 TTM 市盈率（而非读历史预计算）
+    from datetime import date as _date
+    from backend.metrics.valuation import compute_valuation_snapshot
+    _vs = compute_valuation_snapshot(db, company_id, _date.today(), market=company.market)
+    val_snap: dict = {
+        "as_of": _vs.as_of_date.isoformat(),
+        "latest_close": _vs.latest_close,
+        "latest_trade_date": _vs.latest_trade_date.isoformat() if _vs.latest_trade_date else None,
+        "market_cap": _vs.market_cap,
+        "pe_ttm": _vs.pe_ttm,
+    }
 
     # AI 结果
     ai_out: Optional[RiskAIDetailOut] = None

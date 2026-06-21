@@ -53,7 +53,10 @@
 - **PE 改真 TTM**：`valuation.py` `net_income_ttm` 由「年报代理」改为真 4 季 TTM（YTD 差分：最近
   完整财年 + 本年最新YTD − 去年同期YTD；缺季报降级标 `PE_TTM_ANNUAL_PROXY`）。新增 helper
   `get_fact_series_asof`。验证 AMD TTM=5.009B（非年报 4.335）。
-- **设为首页**：`/` redirect → `/my-watchlists`，导航置首位。详见 `milestones/2026-06-21.md`。
+- **设为首页**：`/` redirect → `/my-watchlists`，导航置首位。
+- **按需拉取行情**：进详情页 / 我的股票池页面时拉最新收盘价（yfinance 批量 / Tushare，当天去重 + 容错），
+  详情页头部新增展示最新价/PE；新增 `services/quote.py` + `market_data.ingest_us_latest(_bulk)`。
+  详见 `milestones/2026-06-21.md`。
 - PRD 同步到 **V2.2**；本会话 8 提交（`6498ca5`/`0b262f2`/`cbe4d72`/`d5efaac`/`8f7bdfb`/`c50c302`/`6524b03`/`52fee38`）。详见 `milestones/2026-06-20.md`。
 
 ---

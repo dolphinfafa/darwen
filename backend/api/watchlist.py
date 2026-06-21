@@ -72,6 +72,10 @@ def list_my_stocks(user: User = Depends(get_current_user), db: Session = Depends
         .order_by(WatchlistItem.added_at.desc())
     ).all()
 
+    # 进页面按需刷新行情（当天去重 + 容错；失败降级用库存值）
+    from backend.services.quote import refresh_quotes
+    refresh_quotes(db, [it.company_id for it, _c, _s in rows])
+
     today = _date.today()
     seen: set[str] = set()
     out: list[MyStockOut] = []

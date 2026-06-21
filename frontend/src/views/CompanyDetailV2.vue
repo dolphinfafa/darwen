@@ -14,6 +14,17 @@
           <span class="result-badge" :class="resultClass">{{ resultText }}</span>
           <span v-if="detail.result.q_strong_track" class="tag-strong">10Y 强通过</span>
         </div>
+        <div class="quote-row" v-if="detail.valuation_snapshot">
+          <span class="quote-item">
+            <span class="ql">最新价</span>
+            <b>{{ fmtPrice(detail.valuation_snapshot.latest_close) }}</b>
+            <span v-if="detail.valuation_snapshot.latest_trade_date" class="qd">{{ detail.valuation_snapshot.latest_trade_date }}</span>
+          </span>
+          <span class="quote-item">
+            <span class="ql">市盈率<span class="dtip" data-tip="PE(TTM) = 市值 ÷ 滚动 12 个月净利润（YTD 差分）。进页面按需拉取最新收盘价计算。负盈利显示 —。">ⓘ</span></span>
+            <b class="pe">{{ fmtPe(detail.valuation_snapshot.pe_ttm) }}</b>
+          </span>
+        </div>
         <div class="codes"><ReasonPill v-for="c in detail.result.reason_codes" :key="c" :code="c" /></div>
       </header>
 
@@ -146,6 +157,8 @@ const PRINCIPLE_LABEL = {
 function periodYear(p) { return parseInt(String(p).slice(0, 4), 10) }
 function fmtPct(v) { return v == null ? '-' : (v * 100).toFixed(1) + '%' }
 function fmtBn(v) { return v == null ? '-' : (Math.abs(v) >= 1e9 ? (v / 1e9).toFixed(2) + 'B' : (v / 1e6).toFixed(1) + 'M') }
+function fmtPrice(v) { return v == null ? '-' : Number(v).toFixed(2) }
+function fmtPe(v) { return v == null ? '—' : Number(v).toFixed(1) + 'x' }
 
 function layerData(k) { return detail.value?.layer_results?.[k] || null }
 function layerState(k) {
@@ -228,6 +241,12 @@ onMounted(async () => {
 .result-badge.red { background: #fde0e0; color: #c00; }
 .tag-strong { background: #4285f4; color: #fff; padding: 2px 8px; border-radius: 4px; font-size: 0.75rem; }
 .codes { margin-top: 8px; }
+.quote-row { display: flex; gap: 28px; margin: 12px 0; }
+.quote-item { display: flex; align-items: baseline; gap: 6px; }
+.quote-item .ql { font-size: 0.8rem; color: #8888a0; }
+.quote-item b { font-size: 1.15rem; font-variant-numeric: tabular-nums; }
+.quote-item b.pe { color: #1a3a8a; }
+.quote-item .qd { font-size: 0.72rem; color: #aaa; }
 .card { padding: 18px; border: 1px solid #e0e0e8; border-radius: 10px; background: #fff; margin: 16px 0; }
 .card h2 { margin: 0 0 12px 0; }
 .clickable { cursor: pointer; }
