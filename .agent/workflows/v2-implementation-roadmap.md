@@ -24,6 +24,12 @@
   security + 当天去重 + 美股批量 `ingest_us_latest_bulk` / A 股 `ingest_daily` + 容错）。详情页展示最新价/PE。
 - **漏斗结果页**（`FunnelResults.vue`）：三层 + 入选改手风琴折叠面板 + 多维搜索过滤（代码/名称/所在层/
   市场/行业，命中自动展开）。
+- **MCP server**：外部 agent 凭 per-user 令牌（`user.mcp_token_hash`）连 streamable HTTP MCP 读股票池价/PE
+  （`backend/mcp_server.py`，挂 `/v2/mcp`，工具 `list_watchlist_quotes`）；独立页 `MCP.vue`（`/mcp`，动态 URL）。
+- **财报出处修复**：美股 `get_filing_url` 去鉴权（`<a>` 直开不带 token 致 401），10-K 直链 SEC；
+  A股财报靠 Tushare `anns_d` 公告**逐年年报直链**巨潮 detail（`cn_filings`），缺则回退巨潮检索。
+- **Tushare 公告 + 市场资讯**：`anns_d`（按个股，年报/季报/监管入 `text_document`，给 A股 AI 风险层证据，
+  不再裸判）；`major_news`（全市场，新表 `market_news` + `/v2/market-news` + `MarketNews.vue` 市场资讯页）。
 - 详见 `milestones/2026-06-21.md`。
 
 ### 2026-06-20 架构演进（现行筛选流程，优先于下方历史路线图）
