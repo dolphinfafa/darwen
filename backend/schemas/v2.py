@@ -185,6 +185,7 @@ class CompanyDetailResponse(BaseModel):
     cash_quality_series: list[dict] = [] # [{period_end, cfo_ni_ratio, fcf}]
     dilution_series: list[dict] = []     # [{period_end, shares_outstanding}]
     valuation_snapshot: dict = {}        # {market_cap, pe_ttm, ev_ebit, enterprise_value, as_of}
+    cn_filings: dict = {}                # A股财年→年报巨潮直链 {"2024": url, ...}
     ai_result: Optional[RiskAIDetailOut] = None
     lineage: list[MetricLineageOut] = []
 

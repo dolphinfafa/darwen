@@ -50,8 +50,11 @@
               <td>
                 <a v-if="detail.market === 'US'" class="src" :href="filingUrl(detail.company_id, periodYear(r.period_end), '10-K')"
                    target="_blank" rel="noopener" title="SEC EDGAR 10-K 原文">📄 10-K</a>
+                <a v-else-if="detail.cn_filings?.[periodYear(r.period_end)]" class="src"
+                   :href="detail.cn_filings[periodYear(r.period_end)]"
+                   target="_blank" rel="noopener" title="巨潮资讯网 · 该年度年报原文">📄 年报</a>
                 <a v-else class="src" :href="cninfoUrl(detail.ticker)"
-                   target="_blank" rel="noopener" title="巨潮资讯网 · 按代码检索该股公告/财报">📄 巨潮公告</a>
+                   target="_blank" rel="noopener" title="巨潮资讯网 · 按代码检索该股公告/财报">📄 巨潮</a>
               </td>
             </tr>
           </tbody>

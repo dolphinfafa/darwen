@@ -14,6 +14,7 @@ const routes = [
   { path: '/run/:runId/company/:companyId', name: 'CompanyDetailV2', component: () => import('../views/CompanyDetailV2.vue') },
   { path: '/account', name: 'AccountSettings', component: () => import('../views/AccountSettings.vue') },
   { path: '/mcp', name: 'MCP', component: () => import('../views/MCP.vue') },
+  { path: '/market-news', name: 'MarketNews', component: () => import('../views/MarketNews.vue') },
   // 保留 admin
   { path: '/admin', name: 'Admin', component: () => import('../views/Admin.vue'), meta: { admin: true } },
 ]

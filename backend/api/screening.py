@@ -163,6 +163,31 @@ def get_company_profile(
 
 # ---------------- 财报下载 302 跳转（优化4）----------------
 
+@router.get("/market-news")
+def list_market_news(
+    limit: int = Query(50, ge=1, le=200),
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """市场资讯（Tushare major_news 大盘新闻）。进页面按需拉最近几天（url 去重）+ 返回最新 N 条。"""
+    from backend.models.market_news import MarketNews
+    try:
+        from backend.pipeline.cn_stock_v2.tushare_client import ingest_market_news
+        ingest_market_news(db, days=2)
+    except Exception:  # noqa: BLE001  拉取失败不阻塞，返回库存
+        pass
+    rows = db.execute(
+        select(MarketNews).order_by(MarketNews.published_at.desc()).limit(limit)
+    ).scalars().all()
+    return [
+        {
+            "title": r.title, "url": r.url, "source": r.source,
+            "published_at": r.published_at.isoformat() if r.published_at else None,
+        }
+        for r in rows
+    ]
+
+
 @router.get("/company/{company_id}/filing-url")
 def get_filing_url(
     company_id: str,
@@ -664,6 +689,23 @@ def get_company_detail(
         for r in lineage_rows
     ]
 
+    # A股财报逐年直链：anns_d 入库的年报公告(text_document doc_type=annual) 按财年 → 巨潮 url
+    cn_filings: dict[str, str] = {}
+    if company.market == "CN_A":
+        import re as _re
+        from backend.models.text_document import TextDocument
+        for t, u in db.execute(
+            select(TextDocument.title, TextDocument.content_url).where(
+                TextDocument.company_id == company_id,
+                TextDocument.source_type == "TS-ANN",
+                TextDocument.doc_type == "annual",
+                TextDocument.content_url.isnot(None),
+            ).order_by(TextDocument.published_at.desc())
+        ).all():
+            m = _re.search(r"(\d{4})\s*年年度报告", t or "")
+            if m and m.group(1) not in cn_filings:
+                cn_filings[m.group(1)] = u
+
     return CompanyDetailResponse(
         company_id=company.company_id,
         name=company.name,
@@ -695,6 +737,7 @@ def get_company_detail(
         cash_quality_series=cq_series,
         dilution_series=dil_series,
         valuation_snapshot=val_snap,
+        cn_filings=cn_filings,
         ai_result=ai_out,
         lineage=lineage_out,
     )

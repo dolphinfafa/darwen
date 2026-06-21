@@ -2,6 +2,7 @@
 """Tushare Pro API 封装：财报、行情、披露日期、公告"""
 import hashlib
 import os
+import re
 from datetime import date, datetime
 from typing import Optional
 
@@ -350,18 +351,18 @@ def ingest_daily(db: Session, stock_code: str, start_date: str = "20140101",
 
 # ---------- 公告 ----------
 
-def ingest_announcements(db: Session, stock_code: str, start_date: str = None) -> int:
-    """拉取公司公告写入 text_document（doc_type=annual/interim/regulatory/other）
+def ingest_announcements(db: Session, stock_code: str, start_date: str = "20140101") -> int:
+    """拉取公司公告写入 text_document（仅入 annual/interim/regulatory，跳过 other 降量降噪）。
 
-    需要 anns_d 接口权限；如无权限则静默跳过（A 股公告原文暂不入库，
-    不影响主流程，AI 风险层会从巨潮备源补充）。
+    anns_d 按个股返回公告（含巨潮 detail 直链 url + 标题，无正文）；用于 A股财报逐年直链
+    + AI 风险层个股法定披露证据。无权限则静默跳过。
     """
     pro = get_pro()
     ts_code = to_ts_code(stock_code)
     company_id = _make_company_id(stock_code)
 
     if not start_date:
-        start_date = (datetime.now().replace(year=datetime.now().year - 1)).strftime("%Y%m%d")
+        start_date = "20140101"
     end_date = datetime.now().strftime("%Y%m%d")
 
     try:
@@ -399,15 +400,19 @@ def ingest_announcements(db: Session, stock_code: str, start_date: str = None) -
         ann_date = _parse_date(row.get("ann_date"))
         published_at = datetime.combine(ann_date, datetime.min.time()) if ann_date else None
 
-        # 分类 doc_type
-        if "年度报告" in title or "年报" in title:
+        # 分类 doc_type（正则精确：年报「XXXX年年度报告」vs 半年报/季报），只保留财报 + 监管类
+        if re.search(r"\d{4}\s*年年度报告", title):
             doc_type = "annual"
-        elif "半年度" in title or "三季报" in title or "一季报" in title:
+        elif "半年度报告" in title or "季度报告" in title:
             doc_type = "interim"
-        elif any(k in title for k in ["监管", "处罚", "立案", "问询", "警示"]):
+        elif any(k in title for k in ["监管", "处罚", "立案", "问询", "警示", "诉讼", "违规"]):
             doc_type = "regulatory"
         else:
-            doc_type = "other"
+            continue  # 决议/摘要/一般公告等：跳过不入库
+
+        # 财报的"摘要/英文版/取消/更正/补充"等噪音剔除，保留主报告
+        if doc_type in ("annual", "interim") and any(k in title for k in ("摘要", "英文", "取消", "更正", "补充")):
+            continue
 
         sha = hashlib.sha256(url.encode()).hexdigest()
         batch.append(TextDocument(
@@ -447,3 +452,49 @@ def ingest_one_stock(db: Session, stock_code: str, name: str = None,
         stats["status"] = "failed"
         stats["error"] = str(e)
     return stats
+
+
+def ingest_market_news(db: Session, days: int = 3) -> int:
+    """拉取 Tushare major_news 大盘资讯（全市场，非个股）写入 market_news，按 url 去重。"""
+    from datetime import timedelta
+    from backend.models.market_news import MarketNews
+
+    pro = get_pro()
+    end = datetime.now()
+    start = end - timedelta(days=days)
+    try:
+        df = pro.major_news(
+            start_date=start.strftime("%Y-%m-%d %H:%M:%S"),
+            end_date=end.strftime("%Y-%m-%d %H:%M:%S"),
+            fields="title,content,pub_time,src,url",
+        )
+    except Exception as e:  # noqa: BLE001
+        logger.warning(f"major_news 失败: {e}")
+        return 0
+    if df is None or df.empty:
+        return 0
+
+    existing = set(r[0] for r in db.execute(select(MarketNews.url)).fetchall())
+    batch = []
+    for _, row in df.iterrows():
+        url = row.get("url")
+        if not url or url in existing:
+            continue
+        existing.add(url)
+        pt = row.get("pub_time")
+        published = None
+        try:
+            published = datetime.strptime(str(pt), "%Y-%m-%d %H:%M:%S") if pt else None
+        except Exception:  # noqa: BLE001
+            pass
+        batch.append(MarketNews(
+            title=(row.get("title") or "")[:500],
+            url=str(url)[:500],
+            source=(row.get("src") or "")[:60],
+            content=None,  # 全文 HTML 超长且无用（点 url 看原文），不存
+            published_at=published,
+        ))
+    if batch:
+        db.add_all(batch)
+        db.commit()
+    return len(batch)

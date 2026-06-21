@@ -63,7 +63,10 @@
   （经 nginx `/darwen/v2/mcp/`，无需开端口）。
 - **MCP 独立页面 + 财报链接修复**：MCP 介绍/取 token/动态 URL 抽到 `views/MCP.vue`（路由 `/mcp`，URL 按
   `config.mcp_public_base_url` dev/prod 或 origin 动态）；美股 `get_filing_url` 去鉴权修「10-K 无法下载」（401）；
-  A股出处改链巨潮全文检索。详见 `milestones/2026-06-21.md`。
+  A股出处改链巨潮全文检索。
+- **Tushare 公告 + 市场资讯接入**：买入 anns_d/major_news 权限后——A股公告(anns_d)全历史入库(8413条)，A股详情页
+  财报**逐年年报直链**(巨潮 detail) + A股 AI 风险层有个股公告证据(不再裸判)；新增**市场资讯**页(major_news 大盘
+  新闻，表+`/v2/market-news`+`MarketNews.vue`)。详见 `milestones/2026-06-21.md`。
 - PRD 同步到 **V2.2**；本会话 8 提交（`6498ca5`/`0b262f2`/`cbe4d72`/`d5efaac`/`8f7bdfb`/`c50c302`/`6524b03`/`52fee38`）。详见 `milestones/2026-06-20.md`。
 
 ---
