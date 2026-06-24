@@ -43,6 +43,16 @@ STURDINESS_PASS = "STURDINESS_PASS"
 STURDINESS_HIGH_DEBT = "STURDINESS_HIGH_DEBT"
 STURDINESS_WEAK_COVERAGE = "STURDINESS_WEAK_COVERAGE"
 STURDINESS_NEGATIVE_FCF = "STURDINESS_NEGATIVE_FCF"
+# 财务风险扩展 hard（risk_v1：应计利润率 / FCF 波动）
+STURDINESS_HIGH_ACCRUALS = "STURDINESS_HIGH_ACCRUALS"
+STURDINESS_VOLATILE_FCF = "STURDINESS_VOLATILE_FCF"
+# 软警告（soft：进入观察区不出局；叠加 ≥ config 阈值升级 hard）
+STURDINESS_WATCH_DEBT = "STURDINESS_WATCH_DEBT"
+STURDINESS_WATCH_COVERAGE = "STURDINESS_WATCH_COVERAGE"
+STURDINESS_WATCH_FCF = "STURDINESS_WATCH_FCF"
+STURDINESS_WATCH_ACCRUALS = "STURDINESS_WATCH_ACCRUALS"
+STURDINESS_WATCH_FCF_VOL = "STURDINESS_WATCH_FCF_VOL"
+STURDINESS_SOFT_STACK = "STURDINESS_SOFT_STACK"
 # 风险层占位（阶段3 接 AI）
 RISK_PENDING_AI = "RISK_PENDING_AI"
 # AI 判定 REVIEW（有风险但非法定确凿）→ 出局兜底标记（具体风险通常见 AI_* 标签）
@@ -150,23 +160,47 @@ def _eval_sturdiness(db: Session, company_id: str, asof: date, config: ScreenCon
                      user_id: Optional[int], run_id: Optional[int]) -> tuple[bool, dict]:
     """稳健层：'无负债有充裕现金流' 规则 + 其余 4 条 AI 判定（启用 AI 时）。"""
     reason_codes: list[str] = []
+    soft_codes: list[str] = []
     metrics: dict[str, float] = {}
     nd_ebit = _latest_section(db, company_id, "net_debt_ebit", "leverage_v1", asof)
     int_cov = _latest_section(db, company_id, "interest_coverage", "leverage_v1", asof)
     fcf_neg = _latest_section(db, company_id, "fcf_neg_5y_years", "cash_quality_v1", asof)
-    rule_fail = False
-    if nd_ebit is not None:
-        metrics["net_debt_ebit"] = nd_ebit
-        if nd_ebit > config.r1_net_debt_ebit_max:
-            reason_codes.append(STURDINESS_HIGH_DEBT); rule_fail = True
-    if int_cov is not None:
-        metrics["interest_coverage"] = int_cov
-        if int_cov < config.r1_interest_coverage_min:
-            reason_codes.append(STURDINESS_WEAK_COVERAGE); rule_fail = True
-    if fcf_neg is not None:
-        metrics["fcf_neg_5y_years"] = fcf_neg
-        if fcf_neg > config.r2_fcf_neg_5y_max:
-            reason_codes.append(STURDINESS_NEGATIVE_FCF); rule_fail = True
+    accruals = _latest_section(db, company_id, "accruals_3y_avg", "risk_v1", asof)
+    fcf_cv = _latest_section(db, company_id, "fcf_cv_5y", "risk_v1", asof)
+    hard_fail = False
+
+    def _grade(name, value, soft_t, hard_t, hard_code, soft_code, *, higher_worse=True):
+        """三档判定：达 hard 阈 → 记 hard_code + 标 hard_fail；介于 soft~hard → 记 soft_code（观察区，不出局）。"""
+        nonlocal hard_fail
+        if value is None:
+            return
+        metrics[name] = value
+        bad_hard = value > hard_t if higher_worse else value < hard_t
+        bad_soft = value > soft_t if higher_worse else value < soft_t
+        if bad_hard:
+            reason_codes.append(hard_code); hard_fail = True
+        elif bad_soft:
+            soft_codes.append(soft_code)
+
+    # 杠杆 / 偿债 / 现金流（leverage_v1 + cash_quality_v1）
+    _grade("net_debt_ebit", nd_ebit, config.r1_net_debt_ebit_soft, config.r1_net_debt_ebit_max,
+           STURDINESS_HIGH_DEBT, STURDINESS_WATCH_DEBT)
+    _grade("interest_coverage", int_cov, config.r1_interest_coverage_soft, config.r1_interest_coverage_min,
+           STURDINESS_WEAK_COVERAGE, STURDINESS_WATCH_COVERAGE, higher_worse=False)
+    _grade("fcf_neg_5y_years", fcf_neg, config.r2_fcf_neg_5y_soft, config.r2_fcf_neg_5y_max,
+           STURDINESS_NEGATIVE_FCF, STURDINESS_WATCH_FCF)
+    # 财务风险扩展（risk_v1）：应计利润率 / FCF 波动
+    _grade("accruals_3y_avg", accruals, config.r_accruals_3y_soft, config.r_accruals_3y_hard,
+           STURDINESS_HIGH_ACCRUALS, STURDINESS_WATCH_ACCRUALS)
+    _grade("fcf_cv_5y", fcf_cv, config.r_fcf_cv_5y_soft, config.r_fcf_cv_5y_hard,
+           STURDINESS_VOLATILE_FCF, STURDINESS_WATCH_FCF_VOL)
+
+    # 软警告叠加升级：≥ 阈值视为结构性脆弱 → 升级硬剔除
+    if len(soft_codes) >= config.r_soft_stack_to_hard:
+        hard_fail = True
+        reason_codes.append(STURDINESS_SOFT_STACK)
+    reason_codes.extend(soft_codes)
+    rule_fail = hard_fail
 
     principles = {
         "no_debt_strong_cashflow": {"status": "fail" if rule_fail else "pass",

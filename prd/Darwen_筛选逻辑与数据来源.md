@@ -64,15 +64,22 @@ CapitalEmployed = 净营运资本（剔除超额现金）+ 固定资产净值
 
 衡量「公司是否具备稳健特质」。代码：`backend/screening/funnel_v2.py::_eval_sturdiness`。
 
-### 3.1 规则部分：无负债 · 有充裕现金流
+### 3.1 规则部分：无负债 · 有充裕现金流（hard / soft 三档分档）
 
-| 指标 | 阈值（strict / standard / loose） | 触发标签 |
-|------|-----------------------------------|----------|
-| net_debt / EBIT | > 3.0 / 4.0 / 6.0 | `STURDINESS_HIGH_DEBT` |
-| 利息保障倍数 | < 4.0 / 3.0 / 2.0 | `STURDINESS_WEAK_COVERAGE` |
-| 近 5 年 FCF<0 年数 | > 2 / 3 / 4 | `STURDINESS_NEGATIVE_FCF` |
+每条规则按 **hard（直接剔除）/ soft（进入观察区，不单独出局）/ pass** 三档判定。阈值随 `risk_sensitivity` 调整（strict / standard / loose）：
 
-任一规则 fail 即不通过该层（指标缺失则跳过该条，不算 fail）。
+| 指标 | soft 观察区 | hard 剔除阈（strict / standard / loose） | hard 标签 / soft 标签 | formula_version |
+|------|------------|------------------------------------------|----------------------|-----------------|
+| net_debt / EBIT | > 2.0 / 2.5 / 4.0 起 | > 3.0 / 4.0 / 6.0 | `STURDINESS_HIGH_DEBT` / `STURDINESS_WATCH_DEBT` | leverage_v1 |
+| 利息保障倍数 | < 6.0 / 5.0 / 3.5 起 | < 4.0 / 3.0 / 2.0 | `STURDINESS_WEAK_COVERAGE` / `STURDINESS_WATCH_COVERAGE` | leverage_v1 |
+| 近 5 年 FCF<0 年数 | > 1 / 2 / 3 起 | > 2 / 3 / 4 | `STURDINESS_NEGATIVE_FCF` / `STURDINESS_WATCH_FCF` | cash_quality_v1 |
+| **应计利润率（近 3Y 均值）** = (NI−CFO)/平均总资产 | > 4% / 5% / 8% 起 | > 8% / 10% / 15% | `STURDINESS_HIGH_ACCRUALS` / `STURDINESS_WATCH_ACCRUALS` | **risk_v1** |
+| **FCF 波动（近 5Y 变异系数）** = σ(FCF/Rev)/|μ| | > 0.4 / 0.5 / 0.8 起 | > 0.8 / 1.0 / 1.5 | `STURDINESS_VOLATILE_FCF` / `STURDINESS_WATCH_FCF_VOL` | **risk_v1** |
+
+- **判定**：任一指标达 hard → 出局；介于 soft~hard → 记软警告（warning，不出局，仍可 MONITOR 通过）；指标缺失则跳过该条（不算 fail）。
+- **软警告叠加升级**：软警告条数 ≥ `r_soft_stack_to_hard`（strict 2 / standard 3 / loose 4）→ 视为结构性脆弱，升级硬剔除（`STURDINESS_SOFT_STACK`）。对齐原著「单一软信号不致命、多项叠加才剔除」。
+- **应计利润率方向**：值越大越差（NI 远高于 CFO ⇒ 利润含金量低、疑盈余操纵）；负值（CFO>NI）为利润质量好，不触发。
+- 代码：`risk_metrics.py`（compute_risk_fin_series / evaluate_risk_fin_gate）→ `metric_periodic`（accruals_ratio 逐年 + accruals_3y_avg / fcf_cv_5y 截面）；分档逻辑在 `funnel_v2._eval_sturdiness`，阈值在 `config.py`。
 
 ### 3.2 AI 部分：4 类「不稳健」信号
 
@@ -171,7 +178,8 @@ AI 对每只给一个 `overall_action`，四档语义递进：
 代码：`backend/metrics/`。从 `fact`（原始财务）算出 `metric_periodic`（指标）。
 
 - **formula_version 分模块共存**：`roce_v1`（ROCE/EBIT/资本占用等）、`leverage_v1`（净负债/利息保障）、
-  `cash_quality_v1`（CFO/NI、FCF）、`dilution_v1`（股本 CAGR）、`valuation_v1`（市值/PE/EV）。便于口径升级并存。
+  `cash_quality_v1`（CFO/NI、FCF）、`dilution_v1`（股本 CAGR）、`valuation_v1`（市值/PE/EV）、
+  `risk_v1`（应计利润率 accruals_ratio + FCF 波动 fcf_cv_5y，喂稳健层 hard/soft 分档）。便于口径升级并存。
 - **点时可见性（避免未来函数）**：三轨——`accepted_date ≤ as_of` ＞ `available_date ≤ as_of` ＞
   `period_end + 披露 lag(默认120天) ≤ as_of`。筛选只用 `as_of` 之前可见的数据。
 - **年报口径**：ROCE 等用完整财年（`annual_only`，按 `fiscal_year_end_month` 匹配），避免季报噪声。

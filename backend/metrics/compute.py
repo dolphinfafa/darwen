@@ -57,6 +57,11 @@ from backend.metrics.valuation import (
     FORMULA_VERSION as VALUATION_FORMULA_VERSION,
     compute_valuation_snapshot,
 )
+from backend.metrics.risk_metrics import (
+    FORMULA_VERSION as RISK_FORMULA_VERSION,
+    compute_risk_fin_series,
+    evaluate_risk_fin_gate,
+)
 
 
 log = logging.getLogger(__name__)
@@ -112,6 +117,15 @@ _VALUATION_SECTION_METRICS = (
     "pe_ttm",
     "ev_ebit",
     "enterprise_value",
+)
+
+# 财务风险扩展（risk_v1）
+_RISK_YEAR_METRICS = (
+    "accruals_ratio",
+)
+_RISK_SECTION_METRICS = (
+    "accruals_3y_avg",
+    "fcf_cv_5y",
 )
 
 
@@ -367,6 +381,51 @@ def _persist_cash_quality(
     return year_rows, section_rows, lineage_rows
 
 
+def _persist_risk(
+    db: Session,
+    company_id: str,
+    risk_series: list,
+    fact_meta_lookup: dict[str, tuple[str, Optional[float], Optional[date]]],
+    write_lineage: bool,
+) -> tuple[int, int, int]:
+    year_rows = 0
+    lineage_rows = 0
+    for c in risk_series:
+        if c.period_end is None:
+            continue
+        notes_str = ",".join(c.notes) if c.notes else None
+        for metric_name in _RISK_YEAR_METRICS:
+            value = {"accruals_ratio": c.accruals_ratio}.get(metric_name)
+            _upsert_metric(
+                db, company_id, c.period_end, metric_name, value,
+                list(c.source_fact_ids.values()), notes_str,
+                formula_version=RISK_FORMULA_VERSION,
+            )
+            year_rows += 1
+        if write_lineage:
+            _write_lineage_rows(
+                db, company_id, c.period_end, c.source_fact_ids,
+                fact_meta_lookup, {}, formula_version=RISK_FORMULA_VERSION,
+            )
+            lineage_rows += len(c.source_fact_ids)
+
+    gate = evaluate_risk_fin_gate(risk_series)
+    section_rows = 0
+    valid = [c.period_end for c in risk_series if c.period_end]
+    if valid:
+        as_of = max(valid)
+        for name, value in {
+            "accruals_3y_avg": gate.accruals_3y_avg,
+            "fcf_cv_5y": gate.fcf_cv_5y,
+        }.items():
+            _upsert_metric(
+                db, company_id, as_of, name, value, [], None,
+                formula_version=RISK_FORMULA_VERSION,
+            )
+            section_rows += 1
+    return year_rows, section_rows, lineage_rows
+
+
 def _persist_dilution(
     db: Session,
     company_id: str,
@@ -487,6 +546,11 @@ def persist_all_metrics_for_company(
         db, company_id, year_range, market=market, fiscal_year_end_month=fy_end_month,
     )
 
+    # 3b. 财务风险扩展（应计利润率 / FCF margin）
+    risk_series = compute_risk_fin_series(
+        db, company_id, year_range, market=market, fiscal_year_end_month=fy_end_month,
+    )
+
     # 4. Dilution（shares_outstanding 历史 + 5Y CAGR）
     dil_series: list[DilutionYear] = compute_dilution_series(
         db, company_id, year_range, market=market, fiscal_year_end_month=fy_end_month,
@@ -504,6 +568,8 @@ def persist_all_metrics_for_company(
         all_fact_ids.extend(c.source_fact_ids.values())
     for c in cq_series:
         all_fact_ids.extend(c.source_fact_ids.values())
+    for c in risk_series:
+        all_fact_ids.extend(c.source_fact_ids.values())
     for c in dil_series:
         if c.source_fact_id:
             all_fact_ids.append(c.source_fact_id)
@@ -520,6 +586,9 @@ def persist_all_metrics_for_company(
     cq_year, cq_section, cq_lineage = _persist_cash_quality(
         db, company_id, cq_series, fact_meta_lookup, write_lineage
     )
+    risk_year, risk_section, risk_lineage = _persist_risk(
+        db, company_id, risk_series, fact_meta_lookup, write_lineage
+    )
     dil_year, dil_section, dil_lineage = _persist_dilution(
         db, company_id, dil_series, fact_meta_lookup, write_lineage
     )
@@ -531,9 +600,9 @@ def persist_all_metrics_for_company(
 
     return {
         "company_id": company_id,
-        "year_rows": roce_year + lev_year + cq_year + dil_year,
-        "section_rows": roce_section + cq_section + dil_section + val_section,
-        "lineage_rows": roce_lineage + lev_lineage + cq_lineage + dil_lineage + val_lineage,
+        "year_rows": roce_year + lev_year + cq_year + risk_year + dil_year,
+        "section_rows": roce_section + cq_section + risk_section + dil_section + val_section,
+        "lineage_rows": roce_lineage + lev_lineage + cq_lineage + risk_lineage + dil_lineage + val_lineage,
         "valid_5y": gate.n_valid_years,
         "valid_10y": gate.n_valid_10y,
         "median_5y": gate.median_5y,

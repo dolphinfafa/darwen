@@ -64,6 +64,47 @@ class ScreenConfig:
         """5 年内 FCF<0 允许的最大年数"""
         return {"strict": 2, "standard": 3, "loose": 4}[self.risk_sensitivity]
 
+    # ---- 稳健层 hard/soft 软警告阈值（soft = 进入观察区但不出局；hard = 直接剔除）----
+    @property
+    def r1_net_debt_ebit_soft(self) -> float:
+        """net_debt/EBIT 软警告下界（高于此但未达 hard 上限 → soft）"""
+        return {"strict": 2.0, "standard": 2.5, "loose": 4.0}[self.risk_sensitivity]
+
+    @property
+    def r1_interest_coverage_soft(self) -> float:
+        """利息保障软警告上界（低于此但未跌破 hard 下限 → soft）"""
+        return {"strict": 6.0, "standard": 5.0, "loose": 3.5}[self.risk_sensitivity]
+
+    @property
+    def r2_fcf_neg_5y_soft(self) -> int:
+        """近 5 年 FCF<0 软警告下界年数（高于此但未达 hard → soft）"""
+        return {"strict": 1, "standard": 2, "loose": 3}[self.risk_sensitivity]
+
+    @property
+    def r_accruals_3y_hard(self) -> float:
+        """近 3Y 应计利润率均值硬剔除阈值（>此 → hard，利润质量差/疑盈余操纵）"""
+        return {"strict": 0.08, "standard": 0.10, "loose": 0.15}[self.risk_sensitivity]
+
+    @property
+    def r_accruals_3y_soft(self) -> float:
+        """应计利润率软警告下界（介于 soft~hard → 观察区）"""
+        return {"strict": 0.04, "standard": 0.05, "loose": 0.08}[self.risk_sensitivity]
+
+    @property
+    def r_fcf_cv_5y_hard(self) -> float:
+        """近 5Y FCF/收入 变异系数硬剔除阈值（>此 → hard，现金流极不稳定）"""
+        return {"strict": 0.8, "standard": 1.0, "loose": 1.5}[self.risk_sensitivity]
+
+    @property
+    def r_fcf_cv_5y_soft(self) -> float:
+        """FCF 变异系数软警告下界（介于 soft~hard → 观察区）"""
+        return {"strict": 0.4, "standard": 0.5, "loose": 0.8}[self.risk_sensitivity]
+
+    # 软警告叠加升级：达到此条数视为结构性脆弱，升级为硬剔除
+    @property
+    def r_soft_stack_to_hard(self) -> int:
+        return {"strict": 2, "standard": 3, "loose": 4}[self.risk_sensitivity]
+
     @property
     def r3_share_cagr_5y_max(self) -> float:
         """5Y 股本 CAGR 上限"""
