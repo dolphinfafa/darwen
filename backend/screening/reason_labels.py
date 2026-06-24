@@ -111,6 +111,9 @@ REASON_LABELS: dict[str, LabelEntry] = {
     "STURDINESS_WATCH_WC_GROWTH": {"label": "应收存货偏快", "desc": "稳健层 soft：应收/存货增速领先营收进入观察区，收入质量需关注", "layer": "R", "severity": "warning"},
     "STURDINESS_CCC_DETERIORATING": {"label": "现金周转恶化", "desc": "稳健层 hard：近 3 年现金周转周期(CCC)恶化超阈值，营运资本占用现金剧增", "layer": "R", "severity": "error"},
     "STURDINESS_WATCH_CCC": {"label": "周转趋缓", "desc": "稳健层 soft：现金周转周期(CCC)趋势恶化进入观察区", "layer": "R", "severity": "warning"},
+    # ---- 行业 peer 对标（industry_v1：自建同行业中位，样本 ≥5 才计）----
+    "STURDINESS_INDUSTRY_LAGGARD": {"label": "行业掉队", "desc": "稳健层 hard：近 3Y 营收 CAGR 极端落后同行业中位（份额持续流失），仅深度落后才硬剔除", "layer": "R", "severity": "error"},
+    "STURDINESS_WATCH_INDUSTRY": {"label": "增速逊行业", "desc": "稳健层 soft：营收增速落后同行业中位进入观察区（行业相对掉队预警）", "layer": "R", "severity": "warning"},
     "RISK_PENDING_AI": {"label": "待AI判定", "desc": "风险层：未启用 AI 或未绑定 key，暂占位放行，待人工/AI 复核", "layer": "META", "severity": "info"},
     "STURDINESS_AI_REVIEW": {"label": "稳健性AI存疑", "desc": "稳健层：AI 判定为 REVIEW（识别到非确凿的不稳健信号），按排除法出局", "layer": "R", "severity": "warning"},
     "RISK_AI_REVIEW": {"label": "风险性AI存疑", "desc": "风险层：AI 判定为 REVIEW（识别到非确凿的风险红旗），按排除法出局", "layer": "R", "severity": "warning"},

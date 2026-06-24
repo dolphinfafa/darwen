@@ -78,6 +78,11 @@ CapitalEmployed = 净营运资本（剔除超额现金）+ 固定资产净值
 | **Altman Z''（账面修正版）** = 6.56·X1+3.26·X2+6.72·X3+1.05·X4 | < 3.0 / 2.6 / 1.8 起 | < 1.8 / 1.1 / 0.5 | `STURDINESS_DISTRESS_RISK` / `STURDINESS_WATCH_DISTRESS` | **solvency_v1** |
 | **应收/存货增速领先营收（近 3Y 均值，取较激进者）** | > 5% / 8% / 12% 起 | > 30% / 40% / 60% | `STURDINESS_WC_GROWTH_LEAD` / `STURDINESS_WATCH_WC_GROWTH` | **solvency_v1** |
 | **现金周转周期 CCC 近 3 年恶化天数** | > 20 / 30 / 45 起 | > 90 / 120 / 180 | `STURDINESS_CCC_DETERIORATING` / `STURDINESS_WATCH_CCC` | **solvency_v1** |
+| **营收增速相对同行业**（近 3Y CAGR − 同市场同行业中位） | < −3 / −5 / −10 % | < −20 / −30 / −45 % | `STURDINESS_INDUSTRY_LAGGARD` / `STURDINESS_WATCH_INDUSTRY` | **industry_v1** |
+
+> **行业 peer 自建**（`backend/metrics/industry_peer.py`）：零外部数据，按 `company.industry_name` + `fact.revenue`
+> 自建同行业（同市场）营收 CAGR 中位；样本 ≥5 家才计相对值（美股 71% 覆盖、A股因分散大多跳过）。
+> 对齐原著「不把快变化行业一刀切」——相对落后做 soft 预警，仅极端落后（hard 阈设深）才剔除（全市场 hard 仅 3 家）。
 
 > **Altman Z''**：X1=(流动资产−流动负债)/总资产，X2=留存收益/总资产，X3=EBIT/总资产，X4=股东权益/总负债（账面、跨行业、不依赖市值）；缺留存收益（A股 TS-FS 暂无）则置 None 跳过。
 > **CCC** = DSO+DIO−DPO（DSO=应收/营收·365，DIO=存货/COGS·365，DPO=应付/COGS·365；美股 COGS 缺则用 营收−毛利 反推）。负 CCC（如 Apple/Microsoft/美的，强势占用上下游资金）为优势，不触发。
@@ -210,7 +215,8 @@ AI 对每只给一个 `overall_action`，四档语义递进：
 - **formula_version 分模块共存**：`roce_v1`（ROCE/EBIT/资本占用等）、`leverage_v1`（净负债/利息保障）、
   `cash_quality_v1`（CFO/NI、FCF）、`dilution_v1`（股本 CAGR）、`valuation_v1`（市值/PE/EV）、
   `risk_v1`（应计利润率 accruals_ratio + FCF 波动 fcf_cv_5y）、
-  `solvency_v1`（Altman Z'' altman_z + 现金周转周期 ccc + 应收/存货增长领先 ar_lead_3y/inv_lead_3y）。均喂稳健层 hard/soft 分档。便于口径升级并存。
+  `solvency_v1`（Altman Z'' altman_z + 现金周转周期 ccc + 应收/存货增长领先 ar_lead_3y/inv_lead_3y）、
+  `industry_v1`（行业 peer 自建：营收 CAGR 相对同行业中位 rev_growth_vs_industry）。均喂稳健层 hard/soft 分档。便于口径升级并存。
 - **SEC 营运资本字段（2026-06-24 补拉）**：CORE_CONCEPTS 增 RetainedEarnings/AccountsReceivable/Inventory/AccountsPayable/CostOfGoodsSold；
   美股重拉 546 家解锁 Altman/CCC。A股 TS-FS 已有应收/存货/应付/operating_cost(COGS)，仅缺留存收益（Altman 降级跳过）。
 - **点时可见性（避免未来函数）**：三轨——`accepted_date ≤ as_of` ＞ `available_date ≤ as_of` ＞

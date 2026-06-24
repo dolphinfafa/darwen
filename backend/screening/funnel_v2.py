@@ -61,6 +61,9 @@ STURDINESS_WC_GROWTH_LEAD = "STURDINESS_WC_GROWTH_LEAD"
 STURDINESS_WATCH_WC_GROWTH = "STURDINESS_WATCH_WC_GROWTH"
 STURDINESS_CCC_DETERIORATING = "STURDINESS_CCC_DETERIORATING"
 STURDINESS_WATCH_CCC = "STURDINESS_WATCH_CCC"
+# 行业 peer 自建对标（industry_v1：营收增速相对同行业）
+STURDINESS_INDUSTRY_LAGGARD = "STURDINESS_INDUSTRY_LAGGARD"
+STURDINESS_WATCH_INDUSTRY = "STURDINESS_WATCH_INDUSTRY"
 # 风险层占位（阶段3 接 AI）
 RISK_PENDING_AI = "RISK_PENDING_AI"
 # 风险层治理硬事实（solvency 之外的第三层；source=governance_signal）
@@ -187,6 +190,7 @@ def _eval_sturdiness(db: Session, company_id: str, asof: date, config: ScreenCon
     ar_lead = _latest_section(db, company_id, "ar_lead_3y", "solvency_v1", asof)
     inv_lead = _latest_section(db, company_id, "inv_lead_3y", "solvency_v1", asof)
     ccc_delta = _latest_section(db, company_id, "ccc_delta_3y", "solvency_v1", asof)
+    rev_vs_ind = _latest_section(db, company_id, "rev_growth_vs_industry", "industry_v1", asof)
     # 营运资本增长领先取应收/存货中较激进者
     wc_lead = None
     if ar_lead is not None or inv_lead is not None:
@@ -225,6 +229,9 @@ def _eval_sturdiness(db: Session, company_id: str, asof: date, config: ScreenCon
            STURDINESS_WC_GROWTH_LEAD, STURDINESS_WATCH_WC_GROWTH)
     _grade("ccc_delta_3y", ccc_delta, config.r_ccc_delta_soft, config.r_ccc_delta_hard,
            STURDINESS_CCC_DETERIORATING, STURDINESS_WATCH_CCC)
+    # 行业 peer：营收增速显著落后同行业（越低越差，soft 为主、极端才 hard）
+    _grade("rev_growth_vs_industry", rev_vs_ind, config.r_rev_lag_industry_soft, config.r_rev_lag_industry_hard,
+           STURDINESS_INDUSTRY_LAGGARD, STURDINESS_WATCH_INDUSTRY, higher_worse=False)
 
     # 软警告叠加升级：≥ 阈值视为结构性脆弱 → 升级硬剔除
     if len(soft_codes) >= config.r_soft_stack_to_hard:

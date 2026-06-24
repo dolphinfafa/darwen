@@ -131,6 +131,17 @@ class ScreenConfig:
     def r_ccc_delta_soft(self) -> float:
         return {"strict": 20.0, "standard": 30.0, "loose": 45.0}[self.risk_sensitivity]
 
+    # ---- 行业 peer 对标（industry_v1：营收增速相对同行业，越低越差）----
+    @property
+    def r_rev_lag_industry_soft(self) -> float:
+        """营收 CAGR 低于行业中位此幅度(负) → soft（行业掉队预警）"""
+        return {"strict": -0.03, "standard": -0.05, "loose": -0.10}[self.risk_sensitivity]
+
+    @property
+    def r_rev_lag_industry_hard(self) -> float:
+        """极端落后行业(负)才 hard（原著：行业不一刀切，hard 阈设深）"""
+        return {"strict": -0.20, "standard": -0.30, "loose": -0.45}[self.risk_sensitivity]
+
     # 软警告叠加升级：达到此条数视为结构性脆弱，升级为硬剔除
     @property
     def r_soft_stack_to_hard(self) -> int:
