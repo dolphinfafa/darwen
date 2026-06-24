@@ -68,6 +68,8 @@ RISK_RESTATEMENT = "RISK_RESTATEMENT"
 RISK_AUDITOR_CHANGE = "RISK_AUDITOR_CHANGE"
 RISK_MGMT_INSTABILITY_HARD = "RISK_MGMT_INSTABILITY_HARD"
 RISK_MGMT_INSTABILITY_SOFT = "RISK_MGMT_INSTABILITY_SOFT"
+RISK_HIGH_PLEDGE = "RISK_HIGH_PLEDGE"
+RISK_WATCH_PLEDGE = "RISK_WATCH_PLEDGE"
 RISK_GOV_PASS = "RISK_GOV_PASS"
 # AI 判定 REVIEW（有风险但非法定确凿）→ 出局兜底标记（具体风险通常见 AI_* 标签）
 STURDINESS_AI_FLAGGED = "STURDINESS_AI_REVIEW"
@@ -282,14 +284,19 @@ def _eval_governance_facts(db: Session, company_id: str, asof: date,
     three_y_ago = date(asof.year - 3, asof.month, asof.day)
 
     rows = db.execute(
-        select(GovernanceSignal.signal_type, GovernanceSignal.event_date)
+        select(GovernanceSignal.signal_type, GovernanceSignal.event_date, GovernanceSignal.value)
         .where(GovernanceSignal.company_id == company_id)
         .where(GovernanceSignal.event_date <= asof)
     ).all()
 
-    has_restatement = any(t == "restatement" for t, _ in rows)
-    has_auditor_change = any(t == "auditor_change" for t, _ in rows)
-    exec_dep_3y = sum(1 for t, ed in rows if t == "exec_departure" and ed >= three_y_ago)
+    has_restatement = any(t == "restatement" for t, _, _ in rows)
+    has_auditor_change = any(t == "auditor_change" for t, _, _ in rows)
+    exec_dep_3y = sum(1 for t, ed, _ in rows if t == "exec_departure" and ed >= three_y_ago)
+    # 股权质押：取 ≤ as_of 最新一期快照
+    pledge = sorted(
+        ((ed, v) for t, ed, v in rows if t == "share_pledge" and v is not None),
+        key=lambda x: x[0],
+    )
 
     if has_restatement:
         codes.append(RISK_RESTATEMENT); hard_fail = True
@@ -301,6 +308,13 @@ def _eval_governance_facts(db: Session, company_id: str, asof: date,
             codes.append(RISK_MGMT_INSTABILITY_HARD); hard_fail = True
         elif exec_dep_3y >= config.risk_exec_departure_3y_soft:
             codes.append(RISK_MGMT_INSTABILITY_SOFT)
+    if pledge:
+        ratio = pledge[-1][1]
+        metrics["pledge_ratio"] = ratio
+        if ratio >= config.risk_pledge_ratio_hard:
+            codes.append(RISK_HIGH_PLEDGE); hard_fail = True
+        elif ratio >= config.risk_pledge_ratio_soft:
+            codes.append(RISK_WATCH_PLEDGE)
 
     return hard_fail, codes, metrics
 

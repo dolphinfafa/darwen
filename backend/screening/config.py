@@ -147,6 +147,15 @@ class ScreenConfig:
         return {"strict": 2, "standard": 3, "loose": 4}[self.risk_sensitivity]
 
     @property
+    def risk_pledge_ratio_hard(self) -> float:
+        """A股整体股权质押比例(%) ≥ 此 → hard（控股股东高质押，爆仓/掏空风险）"""
+        return {"strict": 40.0, "standard": 50.0, "loose": 65.0}[self.risk_sensitivity]
+
+    @property
+    def risk_pledge_ratio_soft(self) -> float:
+        return {"strict": 20.0, "standard": 30.0, "loose": 45.0}[self.risk_sensitivity]
+
+    @property
     def r3_share_cagr_5y_max(self) -> float:
         """5Y 股本 CAGR 上限"""
         return {"strict": 0.02, "standard": 0.03, "loose": 0.05}[self.risk_sensitivity]

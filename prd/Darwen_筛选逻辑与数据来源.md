@@ -123,12 +123,17 @@ CapitalEmployed = 净营运资本（剔除超额现金）+ 固定资产净值
 | 信号 | 来源 | 分档 | reason code |
 |------|------|------|-------------|
 | 财务重述 | 美股 8-K **Item 4.02**（非依赖性结论，前期财报不可信） | hard 出局 | `RISK_RESTATEMENT` |
-| 管理层剧烈动荡 | 美股 8-K **Item 5.02** 近 3 年高管/董事变动 ≥ 阈值（strict 4/standard 5/loose 7） | hard 出局 | `RISK_MGMT_INSTABILITY_HARD` |
-| 审计师更换 | 美股 8-K **Item 4.01** | soft（记录不出局） | `RISK_AUDITOR_CHANGE` |
-| 管理层变动偏多 | 8-K Item 5.02 近 3 年 ≥ soft 阈值（2/3/4） | soft | `RISK_MGMT_INSTABILITY_SOFT` |
+| 管理层剧烈动荡 | 美股 8-K **Item 5.02** / A股 **stk_managers 核心一把手离任** 近 3 年 ≥ 阈值（strict 4/standard 5/loose 7） | hard 出局 | `RISK_MGMT_INSTABILITY_HARD` |
+| 高质押 | A股 **pledge_stat** 整体股权质押比例 ≥ 阈值（strict 40/standard 50/loose 65 %） | hard 出局 | `RISK_HIGH_PLEDGE` |
+| 审计师更换 | 美股 8-K **Item 4.01** | soft | `RISK_AUDITOR_CHANGE` |
+| 管理层变动偏多 | 8-K Item 5.02 / A股核心一把手离任 近 3 年 ≥ soft 阈值（2/3/4） | soft | `RISK_MGMT_INSTABILITY_SOFT` |
+| 质押偏高 | A股质押比例 ≥ soft 阈值（20/30/45 %） | soft | `RISK_WATCH_PLEDGE` |
 
-- 数据接入：`backend/pipeline/governance/sec_8k.py`，从 8-K title 已结构化的 Item 编号提取（无需解析正文）。
-- 后续阶段可往同一张 `governance_signal` 表写入 A股质押/股东集中/管理层（Tushare）、美股内部人交易（SEC Form 4）。
+- 数据接入：`backend/pipeline/governance/sec_8k.py`（美股 8-K title 结构化 Item，无需解析正文）；
+  `backend/pipeline/governance/tushare_gov.py`（A股 Tushare `pledge_stat` 质押 + `stk_managers` 核心一把手离任）。
+- **美股 A股统一 signal_type**：`exec_departure` 同一计数逻辑（A股仅取董事长/总经理/财务总监等一把手，排除副职，使频率与美股 8-K 5.02 可比）。
+- **点时正确**：质押取 `event_date ≤ as_of` 最新一期快照（历史高质押但已解押的，按当期判定，不误伤）。
+- 后续可继续往同表写：美股内部人交易（SEC Form 4）、A股股东集中（top10_holders）。
 - AI 介入仍按 `ai_mode`；硬事实与 AI 是「与」关系（硬事实出局 ∪ AI REVIEW/REJECT 出局）。
 
 ---
@@ -189,6 +194,8 @@ AI 对每只给一个 `overall_action`，四档语义递进：
 | 市值 + PE | `daily_basic`（`total_mv` 万元 → 元；权威市值） | `market_bar` |
 | 财报披露日期（点时可见性） | `disclosure_date` | `filing` |
 | 个股公告（年报/季报/监管） | `anns_d`（含巨潮 detail 直链） | `text_document` |
+| 治理硬事实：股权质押 | `pledge_stat`（整体质押比例，按月快照） | `governance_signal`（share_pledge） |
+| 治理硬事实：管理层变动 | `stk_managers`（核心一把手离任，排除副职） | `governance_signal`（exec_departure） |
 | 财报出处链接 | 上述 anns_d 年报公告 → 详情页 `cn_filings` 逐年巨潮直链 | `text_document` |
 | 市场资讯（全市场大盘） | `major_news`（非个股，仅市场背景展示） | `market_news` |
 
