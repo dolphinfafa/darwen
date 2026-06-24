@@ -115,6 +115,22 @@ CapitalEmployed = 净营运资本（剔除超额现金）+ 固定资产净值
 | `stakeholder_unfriendly` | 对员工/客户/供应商不友好 |
 | `minority_shareholder_risk` | 对少数股东不友好（如过度稀释） |
 
+### 4.1 治理硬事实（硬事实优先于 AI，`governance_signal` 表）
+
+风险层不只靠 AI 主观判断，先用**法定披露的硬事实**过滤（`backend/screening/funnel_v2.py::_eval_governance_facts`）。
+硬事实命中即出局，**AI 未启用时仍生效**（点时：`event_date ≤ as_of`）：
+
+| 信号 | 来源 | 分档 | reason code |
+|------|------|------|-------------|
+| 财务重述 | 美股 8-K **Item 4.02**（非依赖性结论，前期财报不可信） | hard 出局 | `RISK_RESTATEMENT` |
+| 管理层剧烈动荡 | 美股 8-K **Item 5.02** 近 3 年高管/董事变动 ≥ 阈值（strict 4/standard 5/loose 7） | hard 出局 | `RISK_MGMT_INSTABILITY_HARD` |
+| 审计师更换 | 美股 8-K **Item 4.01** | soft（记录不出局） | `RISK_AUDITOR_CHANGE` |
+| 管理层变动偏多 | 8-K Item 5.02 近 3 年 ≥ soft 阈值（2/3/4） | soft | `RISK_MGMT_INSTABILITY_SOFT` |
+
+- 数据接入：`backend/pipeline/governance/sec_8k.py`，从 8-K title 已结构化的 Item 编号提取（无需解析正文）。
+- 后续阶段可往同一张 `governance_signal` 表写入 A股质押/股东集中/管理层（Tushare）、美股内部人交易（SEC Form 4）。
+- AI 介入仍按 `ai_mode`；硬事实与 AI 是「与」关系（硬事实出局 ∪ AI REVIEW/REJECT 出局）。
+
 ---
 
 ## 五、出局/通过规则（AI 裁决融合）

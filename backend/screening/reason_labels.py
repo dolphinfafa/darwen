@@ -114,6 +114,12 @@ REASON_LABELS: dict[str, LabelEntry] = {
     "RISK_PENDING_AI": {"label": "待AI判定", "desc": "风险层：未启用 AI 或未绑定 key，暂占位放行，待人工/AI 复核", "layer": "META", "severity": "info"},
     "STURDINESS_AI_REVIEW": {"label": "稳健性AI存疑", "desc": "稳健层：AI 判定为 REVIEW（识别到非确凿的不稳健信号），按排除法出局", "layer": "R", "severity": "warning"},
     "RISK_AI_REVIEW": {"label": "风险性AI存疑", "desc": "风险层：AI 判定为 REVIEW（识别到非确凿的风险红旗），按排除法出局", "layer": "R", "severity": "warning"},
+    # ---- 风险层治理硬事实（governance_signal，硬事实优先于 AI）----
+    "RISK_RESTATEMENT": {"label": "财务重述", "desc": "风险层 hard：8-K Item 4.02 财务重述（前期财报不可信，会计红旗），硬事实直接出局", "layer": "R", "severity": "error"},
+    "RISK_AUDITOR_CHANGE": {"label": "审计师变更", "desc": "风险层 soft：8-K Item 4.01 审计师更换（需关注更换原因，软信号不单独出局）", "layer": "R", "severity": "warning"},
+    "RISK_MGMT_INSTABILITY_HARD": {"label": "管理层剧烈动荡", "desc": "风险层 hard：近 3 年高管/董事离任·任命(8-K Item 5.02)次数达硬阈值，管理层极不稳定", "layer": "R", "severity": "error"},
+    "RISK_MGMT_INSTABILITY_SOFT": {"label": "管理层变动偏多", "desc": "风险层 soft：近 3 年高管/董事变动进入观察区", "layer": "R", "severity": "warning"},
+    "RISK_GOV_PASS": {"label": "治理硬事实通过", "desc": "风险层：无财务重述/审计异常/管理层动荡等治理硬事实红旗", "layer": "R", "severity": "info"},
 }
 
 

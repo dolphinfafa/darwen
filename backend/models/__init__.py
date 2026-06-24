@@ -15,6 +15,7 @@ from backend.models.metric_periodic import MetricPeriodic
 from backend.models.metric_lineage_log import MetricLineageLog
 from backend.models.ingest_task import IngestTask
 from backend.models.watchlist import Watchlist, WatchlistItem
+from backend.models.governance_signal import GovernanceSignal
 
 __all__ = [
     "Company",
@@ -32,4 +33,5 @@ __all__ = [
     "IngestTask",
     "Watchlist",
     "WatchlistItem",
+    "GovernanceSignal",
 ]

@@ -136,6 +136,16 @@ class ScreenConfig:
     def r_soft_stack_to_hard(self) -> int:
         return {"strict": 2, "standard": 3, "loose": 4}[self.risk_sensitivity]
 
+    # ---- 风险层治理硬事实（governance_signal）----
+    @property
+    def risk_exec_departure_3y_hard(self) -> int:
+        """近 3 年高管/董事离任·任命(8-K Item 5.02)次数 ≥ 此 → hard（管理层剧烈动荡）"""
+        return {"strict": 4, "standard": 5, "loose": 7}[self.risk_sensitivity]
+
+    @property
+    def risk_exec_departure_3y_soft(self) -> int:
+        return {"strict": 2, "standard": 3, "loose": 4}[self.risk_sensitivity]
+
     @property
     def r3_share_cagr_5y_max(self) -> float:
         """5Y 股本 CAGR 上限"""

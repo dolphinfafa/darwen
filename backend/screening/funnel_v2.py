@@ -24,6 +24,7 @@ from sqlalchemy.orm import Session
 
 from backend.database import SessionLocal
 from backend.models.company import Company
+from backend.models.governance_signal import GovernanceSignal
 from backend.models.screen_result import ScreenResult
 from backend.models.screen_run import ScreenRun
 
@@ -62,6 +63,12 @@ STURDINESS_CCC_DETERIORATING = "STURDINESS_CCC_DETERIORATING"
 STURDINESS_WATCH_CCC = "STURDINESS_WATCH_CCC"
 # 风险层占位（阶段3 接 AI）
 RISK_PENDING_AI = "RISK_PENDING_AI"
+# 风险层治理硬事实（solvency 之外的第三层；source=governance_signal）
+RISK_RESTATEMENT = "RISK_RESTATEMENT"
+RISK_AUDITOR_CHANGE = "RISK_AUDITOR_CHANGE"
+RISK_MGMT_INSTABILITY_HARD = "RISK_MGMT_INSTABILITY_HARD"
+RISK_MGMT_INSTABILITY_SOFT = "RISK_MGMT_INSTABILITY_SOFT"
+RISK_GOV_PASS = "RISK_GOV_PASS"
 # AI 判定 REVIEW（有风险但非法定确凿）→ 出局兜底标记（具体风险通常见 AI_* 标签）
 STURDINESS_AI_FLAGGED = "STURDINESS_AI_REVIEW"
 RISK_AI_FLAGGED = "RISK_AI_REVIEW"
@@ -260,20 +267,75 @@ def _eval_sturdiness(db: Session, company_id: str, asof: date, config: ScreenCon
     }
 
 
+def _eval_governance_facts(db: Session, company_id: str, asof: date,
+                           config: ScreenConfig) -> tuple[bool, list[str], dict]:
+    """治理硬事实（governance_signal，点时 event_date ≤ asof）。
+
+    返回 (hard_fail, codes, metrics)。硬事实优先于 AI：命中即出局，AI 未启用时仍生效。
+    - restatement(4.02) → hard 直接出局
+    - exec_departure(5.02) 近 3 年计数 ≥ hard 阈 → hard；≥ soft 阈 → soft
+    - auditor_change(4.01) → soft（记录不出局）
+    """
+    codes: list[str] = []
+    metrics: dict[str, float] = {}
+    hard_fail = False
+    three_y_ago = date(asof.year - 3, asof.month, asof.day)
+
+    rows = db.execute(
+        select(GovernanceSignal.signal_type, GovernanceSignal.event_date)
+        .where(GovernanceSignal.company_id == company_id)
+        .where(GovernanceSignal.event_date <= asof)
+    ).all()
+
+    has_restatement = any(t == "restatement" for t, _ in rows)
+    has_auditor_change = any(t == "auditor_change" for t, _ in rows)
+    exec_dep_3y = sum(1 for t, ed in rows if t == "exec_departure" and ed >= three_y_ago)
+
+    if has_restatement:
+        codes.append(RISK_RESTATEMENT); hard_fail = True
+    if has_auditor_change:
+        codes.append(RISK_AUDITOR_CHANGE)
+    if exec_dep_3y:
+        metrics["exec_departure_3y"] = float(exec_dep_3y)
+        if exec_dep_3y >= config.risk_exec_departure_3y_hard:
+            codes.append(RISK_MGMT_INSTABILITY_HARD); hard_fail = True
+        elif exec_dep_3y >= config.risk_exec_departure_3y_soft:
+            codes.append(RISK_MGMT_INSTABILITY_SOFT)
+
+    return hard_fail, codes, metrics
+
+
 def _eval_risk(db: Session, company_id: str, asof: date, config: ScreenConfig,
                user_id: Optional[int], run_id: Optional[int]) -> tuple[bool, dict]:
-    """风险层：AI 判定 5 条风险原则（启用 AI 时）；未启用→占位放行待人工。"""
+    """风险层：治理硬事实（governance_signal）优先 + AI 判定佐证。
+
+    硬事实（财务重述 / 管理层剧烈动荡）命中即出局，AI 未启用时仍生效；
+    soft 信号记录但不单独出局；其余交 AI（5 条风险原则）综合。"""
+    gov_hard, gov_codes, gov_metrics = _eval_governance_facts(db, company_id, asof, config)
+
     ai_action, ai_id, ai_codes, labels = _run_layer_ai(
         db, company_id, asof, config, user_id, run_id, "risk")
+
+    codes = list(gov_codes)
     if ai_action is None:
-        return True, {"passed": True, "reason_codes": [RISK_PENDING_AI], "metrics": {},
+        # AI 未启用：仅靠治理硬事实判定；无硬事实则占位放行
+        if gov_hard:
+            return False, {"passed": False, "reason_codes": codes, "metrics": gov_metrics,
+                           "pending_ai": False, "ai_result_id": None, "ai_action": None}
+        if not codes:
+            codes.append(RISK_PENDING_AI)
+        return True, {"passed": True, "reason_codes": codes, "metrics": gov_metrics,
                       "pending_ai": True, "ai_result_id": None, "ai_action": None}
-    # REVIEW/REJECT 出局；PASS 与 MONITOR（事件型风险但不阻止）通过（此处 ai_action 已非 None）
-    passed = ai_action not in ("REVIEW", "REJECT")
-    codes = list(ai_codes)
-    if not passed and not codes:
+
+    # AI 已跑：硬事实 OR AI REVIEW/REJECT → 出局
+    ai_blocked = ai_action in ("REVIEW", "REJECT")
+    codes.extend(ai_codes)
+    passed = (not gov_hard) and (not ai_blocked)
+    if ai_blocked and not any(c.startswith("AI_") for c in ai_codes):
         codes.append(RISK_AI_FLAGGED)
-    return passed, {"passed": passed, "reason_codes": codes, "metrics": {},
+    if passed and not codes:
+        codes.append(RISK_GOV_PASS)
+    return passed, {"passed": passed, "reason_codes": codes, "metrics": gov_metrics,
                     "pending_ai": False, "ai_result_id": ai_id, "ai_action": ai_action}
 
 
