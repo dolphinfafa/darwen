@@ -75,6 +75,13 @@ CapitalEmployed = 净营运资本（剔除超额现金）+ 固定资产净值
 | 近 5 年 FCF<0 年数 | > 1 / 2 / 3 起 | > 2 / 3 / 4 | `STURDINESS_NEGATIVE_FCF` / `STURDINESS_WATCH_FCF` | cash_quality_v1 |
 | **应计利润率（近 3Y 均值）** = (NI−CFO)/平均总资产 | > 4% / 5% / 8% 起 | > 8% / 10% / 15% | `STURDINESS_HIGH_ACCRUALS` / `STURDINESS_WATCH_ACCRUALS` | **risk_v1** |
 | **FCF 波动（近 5Y 变异系数）** = σ(FCF/Rev)/|μ| | > 0.4 / 0.5 / 0.8 起 | > 0.8 / 1.0 / 1.5 | `STURDINESS_VOLATILE_FCF` / `STURDINESS_WATCH_FCF_VOL` | **risk_v1** |
+| **Altman Z''（账面修正版）** = 6.56·X1+3.26·X2+6.72·X3+1.05·X4 | < 3.0 / 2.6 / 1.8 起 | < 1.8 / 1.1 / 0.5 | `STURDINESS_DISTRESS_RISK` / `STURDINESS_WATCH_DISTRESS` | **solvency_v1** |
+| **应收/存货增速领先营收（近 3Y 均值，取较激进者）** | > 5% / 8% / 12% 起 | > 30% / 40% / 60% | `STURDINESS_WC_GROWTH_LEAD` / `STURDINESS_WATCH_WC_GROWTH` | **solvency_v1** |
+| **现金周转周期 CCC 近 3 年恶化天数** | > 20 / 30 / 45 起 | > 90 / 120 / 180 | `STURDINESS_CCC_DETERIORATING` / `STURDINESS_WATCH_CCC` | **solvency_v1** |
+
+> **Altman Z''**：X1=(流动资产−流动负债)/总资产，X2=留存收益/总资产，X3=EBIT/总资产，X4=股东权益/总负债（账面、跨行业、不依赖市值）；缺留存收益（A股 TS-FS 暂无）则置 None 跳过。
+> **CCC** = DSO+DIO−DPO（DSO=应收/营收·365，DIO=存货/COGS·365，DPO=应付/COGS·365；美股 COGS 缺则用 营收−毛利 反推）。负 CCC（如 Apple/Microsoft/美的，强势占用上下游资金）为优势，不触发。
+> **应收/存货增速领先营收**：盈余质量黄旗（成长/并购/口径变化均会领先），hard 阈设高、多数走 soft，靠软警告叠加升级。
 
 - **判定**：任一指标达 hard → 出局；介于 soft~hard → 记软警告（warning，不出局，仍可 MONITOR 通过）；指标缺失则跳过该条（不算 fail）。
 - **软警告叠加升级**：软警告条数 ≥ `r_soft_stack_to_hard`（strict 2 / standard 3 / loose 4）→ 视为结构性脆弱，升级硬剔除（`STURDINESS_SOFT_STACK`）。对齐原著「单一软信号不致命、多项叠加才剔除」。
@@ -179,7 +186,10 @@ AI 对每只给一个 `overall_action`，四档语义递进：
 
 - **formula_version 分模块共存**：`roce_v1`（ROCE/EBIT/资本占用等）、`leverage_v1`（净负债/利息保障）、
   `cash_quality_v1`（CFO/NI、FCF）、`dilution_v1`（股本 CAGR）、`valuation_v1`（市值/PE/EV）、
-  `risk_v1`（应计利润率 accruals_ratio + FCF 波动 fcf_cv_5y，喂稳健层 hard/soft 分档）。便于口径升级并存。
+  `risk_v1`（应计利润率 accruals_ratio + FCF 波动 fcf_cv_5y）、
+  `solvency_v1`（Altman Z'' altman_z + 现金周转周期 ccc + 应收/存货增长领先 ar_lead_3y/inv_lead_3y）。均喂稳健层 hard/soft 分档。便于口径升级并存。
+- **SEC 营运资本字段（2026-06-24 补拉）**：CORE_CONCEPTS 增 RetainedEarnings/AccountsReceivable/Inventory/AccountsPayable/CostOfGoodsSold；
+  美股重拉 546 家解锁 Altman/CCC。A股 TS-FS 已有应收/存货/应付/operating_cost(COGS)，仅缺留存收益（Altman 降级跳过）。
 - **点时可见性（避免未来函数）**：三轨——`accepted_date ≤ as_of` ＞ `available_date ≤ as_of` ＞
   `period_end + 披露 lag(默认120天) ≤ as_of`。筛选只用 `as_of` 之前可见的数据。
 - **年报口径**：ROCE 等用完整财年（`annual_only`，按 `fiscal_year_end_month` 匹配），避免季报噪声。

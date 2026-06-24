@@ -100,6 +100,37 @@ class ScreenConfig:
         """FCF 变异系数软警告下界（介于 soft~hard → 观察区）"""
         return {"strict": 0.4, "standard": 0.5, "loose": 0.8}[self.risk_sensitivity]
 
+    # ---- 偿付/营运资本（solvency_v1：Altman Z / 营运资本增长领先 / CCC 恶化）----
+    @property
+    def r_altman_z_hard(self) -> float:
+        """Altman Z'' 低于此 → hard（财务困境/破产风险）"""
+        return {"strict": 1.8, "standard": 1.1, "loose": 0.5}[self.risk_sensitivity]
+
+    @property
+    def r_altman_z_soft(self) -> float:
+        """Altman Z'' 低于此（但未跌破 hard）→ soft（灰区）"""
+        return {"strict": 3.0, "standard": 2.6, "loose": 1.8}[self.risk_sensitivity]
+
+    @property
+    def r_wc_growth_lead_hard(self) -> float:
+        """近 3Y 应收/存货增速领先营收均值高于此 → hard。
+        盈余质量属黄旗（成长/并购/口径变化均会领先），hard 阈设高，仅极端虚增才单独剔除；
+        多数走 soft，靠 soft 叠加升级。"""
+        return {"strict": 0.30, "standard": 0.40, "loose": 0.60}[self.risk_sensitivity]
+
+    @property
+    def r_wc_growth_lead_soft(self) -> float:
+        return {"strict": 0.05, "standard": 0.08, "loose": 0.12}[self.risk_sensitivity]
+
+    @property
+    def r_ccc_delta_hard(self) -> float:
+        """近 3 年 CCC 恶化天数高于此 → hard（现金占用剧增）"""
+        return {"strict": 90.0, "standard": 120.0, "loose": 180.0}[self.risk_sensitivity]
+
+    @property
+    def r_ccc_delta_soft(self) -> float:
+        return {"strict": 20.0, "standard": 30.0, "loose": 45.0}[self.risk_sensitivity]
+
     # 软警告叠加升级：达到此条数视为结构性脆弱，升级为硬剔除
     @property
     def r_soft_stack_to_hard(self) -> int:

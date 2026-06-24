@@ -104,6 +104,13 @@ REASON_LABELS: dict[str, LabelEntry] = {
     "STURDINESS_WATCH_ACCRUALS": {"label": "应计偏高", "desc": "稳健层 soft：应计利润率进入观察区（默认 5%~10%），利润含金量需关注", "layer": "R", "severity": "warning"},
     "STURDINESS_WATCH_FCF_VOL": {"label": "FCF 波动偏大", "desc": "稳健层 soft：FCF/收入 变异系数进入观察区（默认 0.5~1），现金流稳定性需关注", "layer": "R", "severity": "warning"},
     "STURDINESS_SOFT_STACK": {"label": "多项软警告", "desc": "稳健层：软警告项数达阈值（默认 ≥3），视为结构性脆弱，升级为硬剔除出局", "layer": "R", "severity": "error"},
+    # ---- 偿付/营运资本（solvency_v1：Altman Z / 营运资本增长领先 / CCC）----
+    "STURDINESS_DISTRESS_RISK": {"label": "财务困境", "desc": "稳健层 hard：Altman Z''（账面修正版）低于阈值，破产/财务困境风险高", "layer": "R", "severity": "error"},
+    "STURDINESS_WATCH_DISTRESS": {"label": "偿付灰区", "desc": "稳健层 soft：Altman Z'' 进入灰区（默认 1.1~2.6），偿付能力需关注", "layer": "R", "severity": "warning"},
+    "STURDINESS_WC_GROWTH_LEAD": {"label": "应收存货虚增", "desc": "稳健层 hard：近 3Y 应收/存货增速持续大幅领先营收，收入质量/虚增隐患", "layer": "R", "severity": "error"},
+    "STURDINESS_WATCH_WC_GROWTH": {"label": "应收存货偏快", "desc": "稳健层 soft：应收/存货增速领先营收进入观察区，收入质量需关注", "layer": "R", "severity": "warning"},
+    "STURDINESS_CCC_DETERIORATING": {"label": "现金周转恶化", "desc": "稳健层 hard：近 3 年现金周转周期(CCC)恶化超阈值，营运资本占用现金剧增", "layer": "R", "severity": "error"},
+    "STURDINESS_WATCH_CCC": {"label": "周转趋缓", "desc": "稳健层 soft：现金周转周期(CCC)趋势恶化进入观察区", "layer": "R", "severity": "warning"},
     "RISK_PENDING_AI": {"label": "待AI判定", "desc": "风险层：未启用 AI 或未绑定 key，暂占位放行，待人工/AI 复核", "layer": "META", "severity": "info"},
     "STURDINESS_AI_REVIEW": {"label": "稳健性AI存疑", "desc": "稳健层：AI 判定为 REVIEW（识别到非确凿的不稳健信号），按排除法出局", "layer": "R", "severity": "warning"},
     "RISK_AI_REVIEW": {"label": "风险性AI存疑", "desc": "风险层：AI 判定为 REVIEW（识别到非确凿的风险红旗），按排除法出局", "layer": "R", "severity": "warning"},

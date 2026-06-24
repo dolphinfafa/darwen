@@ -53,6 +53,13 @@ STURDINESS_WATCH_FCF = "STURDINESS_WATCH_FCF"
 STURDINESS_WATCH_ACCRUALS = "STURDINESS_WATCH_ACCRUALS"
 STURDINESS_WATCH_FCF_VOL = "STURDINESS_WATCH_FCF_VOL"
 STURDINESS_SOFT_STACK = "STURDINESS_SOFT_STACK"
+# 偿付/营运资本扩展（solvency_v1：Altman Z / 营运资本增长领先 / CCC）
+STURDINESS_DISTRESS_RISK = "STURDINESS_DISTRESS_RISK"
+STURDINESS_WATCH_DISTRESS = "STURDINESS_WATCH_DISTRESS"
+STURDINESS_WC_GROWTH_LEAD = "STURDINESS_WC_GROWTH_LEAD"
+STURDINESS_WATCH_WC_GROWTH = "STURDINESS_WATCH_WC_GROWTH"
+STURDINESS_CCC_DETERIORATING = "STURDINESS_CCC_DETERIORATING"
+STURDINESS_WATCH_CCC = "STURDINESS_WATCH_CCC"
 # 风险层占位（阶段3 接 AI）
 RISK_PENDING_AI = "RISK_PENDING_AI"
 # AI 判定 REVIEW（有风险但非法定确凿）→ 出局兜底标记（具体风险通常见 AI_* 标签）
@@ -167,6 +174,14 @@ def _eval_sturdiness(db: Session, company_id: str, asof: date, config: ScreenCon
     fcf_neg = _latest_section(db, company_id, "fcf_neg_5y_years", "cash_quality_v1", asof)
     accruals = _latest_section(db, company_id, "accruals_3y_avg", "risk_v1", asof)
     fcf_cv = _latest_section(db, company_id, "fcf_cv_5y", "risk_v1", asof)
+    altman_z = _latest_section(db, company_id, "altman_z_latest", "solvency_v1", asof)
+    ar_lead = _latest_section(db, company_id, "ar_lead_3y", "solvency_v1", asof)
+    inv_lead = _latest_section(db, company_id, "inv_lead_3y", "solvency_v1", asof)
+    ccc_delta = _latest_section(db, company_id, "ccc_delta_3y", "solvency_v1", asof)
+    # 营运资本增长领先取应收/存货中较激进者
+    wc_lead = None
+    if ar_lead is not None or inv_lead is not None:
+        wc_lead = max(v for v in (ar_lead, inv_lead) if v is not None)
     hard_fail = False
 
     def _grade(name, value, soft_t, hard_t, hard_code, soft_code, *, higher_worse=True):
@@ -194,6 +209,13 @@ def _eval_sturdiness(db: Session, company_id: str, asof: date, config: ScreenCon
            STURDINESS_HIGH_ACCRUALS, STURDINESS_WATCH_ACCRUALS)
     _grade("fcf_cv_5y", fcf_cv, config.r_fcf_cv_5y_soft, config.r_fcf_cv_5y_hard,
            STURDINESS_VOLATILE_FCF, STURDINESS_WATCH_FCF_VOL)
+    # 偿付/营运资本（solvency_v1）：Altman Z 越低越差；营运资本增长领先 / CCC 恶化 越高越差
+    _grade("altman_z_latest", altman_z, config.r_altman_z_soft, config.r_altman_z_hard,
+           STURDINESS_DISTRESS_RISK, STURDINESS_WATCH_DISTRESS, higher_worse=False)
+    _grade("wc_growth_lead", wc_lead, config.r_wc_growth_lead_soft, config.r_wc_growth_lead_hard,
+           STURDINESS_WC_GROWTH_LEAD, STURDINESS_WATCH_WC_GROWTH)
+    _grade("ccc_delta_3y", ccc_delta, config.r_ccc_delta_soft, config.r_ccc_delta_hard,
+           STURDINESS_CCC_DETERIORATING, STURDINESS_WATCH_CCC)
 
     # 软警告叠加升级：≥ 阈值视为结构性脆弱 → 升级硬剔除
     if len(soft_codes) >= config.r_soft_stack_to_hard:

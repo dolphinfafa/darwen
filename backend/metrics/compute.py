@@ -62,6 +62,11 @@ from backend.metrics.risk_metrics import (
     compute_risk_fin_series,
     evaluate_risk_fin_gate,
 )
+from backend.metrics.solvency_metrics import (
+    FORMULA_VERSION as SOLVENCY_FORMULA_VERSION,
+    compute_solvency_series,
+    evaluate_solvency_gate,
+)
 
 
 log = logging.getLogger(__name__)
@@ -126,6 +131,19 @@ _RISK_YEAR_METRICS = (
 _RISK_SECTION_METRICS = (
     "accruals_3y_avg",
     "fcf_cv_5y",
+)
+
+# 偿付/营运资本（solvency_v1）
+_SOLVENCY_YEAR_METRICS = (
+    "altman_z",
+    "ccc",
+)
+_SOLVENCY_SECTION_METRICS = (
+    "altman_z_latest",
+    "ccc_latest",
+    "ccc_delta_3y",
+    "ar_lead_3y",
+    "inv_lead_3y",
 )
 
 
@@ -426,6 +444,58 @@ def _persist_risk(
     return year_rows, section_rows, lineage_rows
 
 
+def _persist_solvency(
+    db: Session,
+    company_id: str,
+    sol_series: list,
+    fact_meta_lookup: dict[str, tuple[str, Optional[float], Optional[date]]],
+    write_lineage: bool,
+) -> tuple[int, int, int]:
+    """偿付/营运资本：altman_z/ccc 逐年 + 截面 5 项落库（formula_version=solvency_v1）。"""
+    year_rows = 0
+    lineage_rows = 0
+    for c in sol_series:
+        if c.period_end is None:
+            continue
+        for metric_name in _SOLVENCY_YEAR_METRICS:
+            value = {"altman_z": c.altman_z, "ccc": c.ccc}.get(metric_name)
+            if value is None:
+                continue
+            _upsert_metric(
+                db, company_id, c.period_end, metric_name, value,
+                list(c.source_fact_ids.values()), None,
+                formula_version=SOLVENCY_FORMULA_VERSION,
+            )
+            year_rows += 1
+        if write_lineage and c.source_fact_ids:
+            _write_lineage_rows(
+                db, company_id, c.period_end, c.source_fact_ids,
+                fact_meta_lookup, {}, formula_version=SOLVENCY_FORMULA_VERSION,
+            )
+            lineage_rows += len(c.source_fact_ids)
+
+    gate = evaluate_solvency_gate(sol_series)
+    section_rows = 0
+    valid = [c.period_end for c in sol_series if c.period_end]
+    if valid:
+        as_of = max(valid)
+        for name, value in {
+            "altman_z_latest": gate.altman_z_latest,
+            "ccc_latest": gate.ccc_latest,
+            "ccc_delta_3y": gate.ccc_delta_3y,
+            "ar_lead_3y": gate.ar_lead_3y,
+            "inv_lead_3y": gate.inv_lead_3y,
+        }.items():
+            if value is None:
+                continue
+            _upsert_metric(
+                db, company_id, as_of, name, value, [], None,
+                formula_version=SOLVENCY_FORMULA_VERSION,
+            )
+            section_rows += 1
+    return year_rows, section_rows, lineage_rows
+
+
 def _persist_dilution(
     db: Session,
     company_id: str,
@@ -551,6 +621,11 @@ def persist_all_metrics_for_company(
         db, company_id, year_range, market=market, fiscal_year_end_month=fy_end_month,
     )
 
+    # 3c. 偿付/营运资本（Altman Z / CCC / 应收·存货增长领先）
+    sol_series = compute_solvency_series(
+        db, company_id, year_range, market=market, fiscal_year_end_month=fy_end_month,
+    )
+
     # 4. Dilution（shares_outstanding 历史 + 5Y CAGR）
     dil_series: list[DilutionYear] = compute_dilution_series(
         db, company_id, year_range, market=market, fiscal_year_end_month=fy_end_month,
@@ -569,6 +644,8 @@ def persist_all_metrics_for_company(
     for c in cq_series:
         all_fact_ids.extend(c.source_fact_ids.values())
     for c in risk_series:
+        all_fact_ids.extend(c.source_fact_ids.values())
+    for c in sol_series:
         all_fact_ids.extend(c.source_fact_ids.values())
     for c in dil_series:
         if c.source_fact_id:
@@ -589,6 +666,9 @@ def persist_all_metrics_for_company(
     risk_year, risk_section, risk_lineage = _persist_risk(
         db, company_id, risk_series, fact_meta_lookup, write_lineage
     )
+    sol_year, sol_section, sol_lineage = _persist_solvency(
+        db, company_id, sol_series, fact_meta_lookup, write_lineage
+    )
     dil_year, dil_section, dil_lineage = _persist_dilution(
         db, company_id, dil_series, fact_meta_lookup, write_lineage
     )
@@ -600,9 +680,9 @@ def persist_all_metrics_for_company(
 
     return {
         "company_id": company_id,
-        "year_rows": roce_year + lev_year + cq_year + risk_year + dil_year,
-        "section_rows": roce_section + cq_section + risk_section + dil_section + val_section,
-        "lineage_rows": roce_lineage + lev_lineage + cq_lineage + risk_lineage + dil_lineage + val_lineage,
+        "year_rows": roce_year + lev_year + cq_year + risk_year + sol_year + dil_year,
+        "section_rows": roce_section + cq_section + risk_section + sol_section + dil_section + val_section,
+        "lineage_rows": roce_lineage + lev_lineage + cq_lineage + risk_lineage + sol_lineage + dil_lineage + val_lineage,
         "valid_5y": gate.n_valid_years,
         "valid_10y": gate.n_valid_10y,
         "median_5y": gate.median_5y,

@@ -166,6 +166,44 @@ FIELD_MAP: dict[str, dict[str, list[str]]] = {
         "AKSHARE": ["intangible_assets"],
     },
 
+    # ===== 营运资本明细（solvency_v1：Altman Z / CCC / 应收·存货增长领先）=====
+    "retained_earnings": {
+        # Altman Z X2；A股 TS-FS 暂无（未分配利润未拉），A股 Altman 缺该项时降级跳过
+        "SEC": ["RetainedEarningsAccumulatedDeficit"],
+        "TS-FS": ["undistr_porfit", "retained_earnings"],
+        "AKSHARE": [],
+    },
+    "accounts_receivable": {
+        # DSO = AR/Revenue×365；应收增长领先营收
+        "SEC": ["AccountsReceivableNetCurrent"],
+        "TS-FS": ["accounts_receivable"],
+        "AKSHARE": ["accounts_receivable"],
+    },
+    "inventory": {
+        # DIO = Inventory/COGS×365；存货增长领先营收
+        "SEC": ["InventoryNet"],
+        "TS-FS": ["inventory"],
+        "AKSHARE": ["inventory"],
+    },
+    "accounts_payable": {
+        # DPO = AP/COGS×365
+        "SEC": ["AccountsPayableCurrent"],
+        "TS-FS": ["accounts_payable"],
+        "AKSHARE": ["accounts_payable"],
+    },
+    "gross_profit": {
+        # 美股 COGS 反推：COGS = Revenue − GrossProfit
+        "SEC": ["GrossProfit"],
+        "TS-FS": [],
+        "AKSHARE": [],
+    },
+    "cogs": {
+        # 营业成本：DIO/DPO 分母；美股缺则用 revenue − gross_profit 反推
+        "SEC": ["CostOfGoodsAndServicesSold", "CostOfRevenue", "CostOfGoodsSold"],
+        "TS-FS": ["operating_cost"],
+        "AKSHARE": ["operating_cost"],
+    },
+
     # ===== 股本 =====
     "shares_outstanding": {
         # M2.4 dilution & M2.5 pe_ttm

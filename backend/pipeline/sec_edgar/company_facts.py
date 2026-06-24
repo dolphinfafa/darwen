@@ -55,6 +55,14 @@ CORE_CONCEPTS = [
     "PropertyPlantAndEquipmentNet",
     "Goodwill",
     "IntangibleAssetsNetExcludingGoodwill",
+    # 营运资本明细（solvency_v1：Altman Z / 现金周转周期 CCC / 应收·存货增长领先）
+    "RetainedEarningsAccumulatedDeficit",
+    "AccountsReceivableNetCurrent",
+    "InventoryNet",
+    "AccountsPayableCurrent",
+    # COGS 直接源（否则用 Revenue − GrossProfit 反推）
+    "CostOfGoodsAndServicesSold",
+    "CostOfRevenue",
 ]
 
 
