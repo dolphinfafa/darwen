@@ -207,3 +207,26 @@ def _seg_rev_noop(cid):
     """一条普通营收事实，仅用于抬高主报告期，不带 segment 轴。"""
     return (f'<ix:nonFraction name="us-gaap:Revenues" contextRef="{cid}" '
             f'scale="0" unitRef="usd">1000</ix:nonFraction>')
+
+
+# ---------------- A股 segment HHI (tushare_segment) ----------------
+
+def test_cn_hhi_handles_nan_and_dedup():
+    """A股 fina_mainbz bz_sales 偶有 NaN / 同值重复层级 / 其他兜底行——清洗后正确算 HHI。"""
+    from backend.pipeline.commercial.tushare_segment import _hhi_from_items
+    rows = [
+        ("白酒", 600.0),
+        ("系列酒", 400.0),
+        ("其他酒系列", 400.0),     # 同值重复层级 → 去重
+        ("其他业务", 50.0),         # "其他" 兜底行 → 排除
+        ("缺失项", float("nan")),   # NaN → 跳过（修复点）
+    ]
+    hhi, n = _hhi_from_items(rows)
+    assert n == 2
+    assert hhi == pytest.approx(0.6 ** 2 + 0.4 ** 2)  # 0.52
+
+
+def test_cn_hhi_single_segment_none():
+    from backend.pipeline.commercial.tushare_segment import _hhi_from_items
+    hhi, n = _hhi_from_items([("单一主业", 1000.0), ("其他", 5.0)])
+    assert hhi is None  # 仅 1 个有效业务线

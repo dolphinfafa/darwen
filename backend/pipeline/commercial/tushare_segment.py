@@ -46,6 +46,8 @@ def _hhi_from_items(rows) -> tuple[Optional[float], int]:
             v = float(sales)
         except (TypeError, ValueError):
             continue
+        if v != v:  # NaN（Tushare bz_sales 偶有缺失）→ 跳过
+            continue
         if v <= 0 or _EXCLUDE_ITEM.search(str(name or "")):
             continue
         key = int(round(v, -3))  # 金额近似去重（同值不同标签视为同一层级）
