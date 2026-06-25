@@ -4,6 +4,7 @@
 
 **当前状态**：筛选为 **ROCE → 稳健性 → 风险性 三层全自动漏斗**（2026-06-20 起默认 auto_advance 连跑，
 人工 gate 的 HTTP 层已移除）；底层 V2 工程闭环 + 数据修补（含 2025 财年）+ AI 调用沿用 2026-05-13 版本。
+**2026-06-24~25 完成「风险指标融入漏斗」——原著四类风险（财务/治理/行业/商业）已全部有量化或硬事实落点，硬事实优先于 AI。**
 
 工作日志：
 - `milestones/2026-05-12.md` — M1-M7 主线 + 全量回填 (12 章)
@@ -12,6 +13,25 @@
 - `milestones/2026-06-19.md` — AI 介入范围可选 + 漏斗两 bug 修复 + PRD V2.1
 - `milestones/2026-06-20.md` — **漏斗改全自动**（取消人工 gate + 移除 /advance /manual）+ 筛选历史删除 + 详情页/原因标签 tooltip
 - `milestones/2026-06-21.md` — **我的股票池改造**（平铺/最新价/真 TTM 市盈率/设首页）+ 按需拉取行情 + 漏斗页手风琴/过滤
+- `milestones/2026-06-24.md` / `2026-06-24-phase2.md` — **风险指标·阶段1-2**（财务稳健 8 指标 + 治理硬事实 + 行业 peer）
+- `milestones/2026-06-25-phase3.md` — **风险指标·阶段3 商业深度**（客户/供应商集中度 + segment HHI，零采购）
+
+### 2026-06-24~25 风险指标融入漏斗（现行，优先于下方）
+
+把原著四类风险全部做成漏斗内的量化指标或硬事实落点，**硬事实优先于 AI**（有数据按规则判、无数据才回落 AI）：
+
+- **财务风险 → 稳健层 8 指标**（阶段1a/1b）：应计利润率 / FCF 波动（`risk_v1`）、Altman Z'' / 应收存货增速领先 /
+  CCC 恶化（`solvency_v1`）；均 hard/soft 三档 + 软警告叠加升级（`r_soft_stack_to_hard`）。
+- **治理风险 → 风险层硬事实**（阶段2，`governance_signal` 表 + `_eval_governance_facts`）：
+  美股 8-K Item 4.02 重述(hard)/4.01 审计师(soft)/5.02 高管动荡(计数)；A股 Tushare 质押 + 核心一把手离任。点时按 `event_date`。
+- **行业风险 → 稳健层 peer 对标**（阶段2续②，`industry_v1`）：自建同市场同行业营收 CAGR 中位，相对落后 soft、极端 hard。
+- **商业风险 → 稳健层商业深度**（阶段3，`commercial_v1` + `backend/pipeline/commercial/`）：
+  客户集中度（美股 10-K iXBRL 四重精筛 + 排除合并群/渠道）、segment 收入 HHI（美股 iXBRL / A股 `fina_mainbz`）、
+  供应商定性旗标（→ `governance_signal`）。`diversified_customers`/`diversified_suppliers` 原则由 AI 占位升级为规则判定。
+  **A股客户/供应商集中度为已知数据缺口**（Tushare 无、年报文本空），采购建议见 `prd/Darwen_筛选逻辑与数据来源.md`。
+- 代码：阈值 `config.py`（`r_*` @property 三档）、标签 `reason_labels.py`、消费 `funnel_v2._eval_sturdiness`；
+  回填 `scripts/backfill_commercial_signals.py`；单测 `tests/test_commercial_extract.py`（18 项）。
+- 详见 `milestones/2026-06-24-phase2.md`、`2026-06-25-phase3.md` 与 `prd/Darwen_筛选逻辑与数据来源.md` §3.1/3.2/4.1。
 
 ### 2026-06-21 前端 UX 增强 + 估值口径（现行，优先于下方）
 

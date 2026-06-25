@@ -1,6 +1,6 @@
 # Darwen 项目进度总览
 
-> 最后更新：2026-06-21
+> 最后更新：2026-06-25
 > 项目方向：V2 股票筛选系统（基于 Pulak Prasad《What I Learned About Investing from Darwin》）
 
 ---
@@ -68,6 +68,26 @@
   财报**逐年年报直链**(巨潮 detail) + A股 AI 风险层有个股公告证据(不再裸判)；新增**市场资讯**页(major_news 大盘
   新闻，表+`/v2/market-news`+`MarketNews.vue`)。详见 `milestones/2026-06-21.md`。
 - PRD 同步到 **V2.2**；本会话 8 提交（`6498ca5`/`0b262f2`/`cbe4d72`/`d5efaac`/`8f7bdfb`/`c50c302`/`6524b03`/`52fee38`）。详见 `milestones/2026-06-20.md`。
+
+### 2026-06-24~25 风险指标融入漏斗（原著四类风险全量化/硬事实）
+
+把 Pulak 原著「商业/财务/治理/行业」四类风险，全部做成漏斗内的**量化指标或硬事实落点**，
+**硬事实优先于 AI**（有数据按规则判定、无数据才回落 AI），不再纯靠 AI 主观裁决：
+
+| 风险类别 | 落点 | 实现（formula_version / 表） | 状态 |
+|---|---|---|---|
+| 财务 | 稳健层 8 指标 | 应计/FCF波动(`risk_v1`) + Altman Z/应收存货增速/CCC(`solvency_v1`) | ✅ 阶段1a/1b |
+| 治理 | 风险层硬事实 | 美股 8-K(4.02重述/4.01审计/5.02高管) + A股 Tushare(质押/一把手离任) → `governance_signal` | ✅ 阶段2 |
+| 行业 | 稳健层 peer 对标 | 自建同市场同行业营收 CAGR 中位(`industry_v1`)，相对落后 soft、极端 hard | ✅ 阶段2续② |
+| 商业 | 稳健层商业深度 | 客户/供应商集中度 + segment HHI(`commercial_v1`)，零采购从 10-K iXBRL / Tushare `fina_mainbz` 抽取 | ✅ 阶段3 |
+
+- **阶段3 商业深度（2026-06-25）**：`backend/pipeline/commercial/`——
+  客户集中度（美股 10-K iXBRL `ConcentrationRiskPercentage1` 四重精筛 + 排除合并客户群/销售渠道误报，45 家）、
+  segment 收入 HHI（美股 iXBRL 分部营收 / A股 `fina_mainbz`，美 246 + A 48 家）、
+  供应商定性旗标（→ `governance_signal`，320 条/192 家）。`diversified_customers`/`diversified_suppliers` 原则由 AI 占位升级为规则判定。
+- **A股客户/供应商集中度 = 已知数据缺口**：Tushare 无免费结构化字段、年报文本为空；采购建议 CSMAR / Wind / iFinD / Choice（见 prd §3.1）。
+- 验证：18 单测全过；美股 813 份 10-K 回填 0 失败；净效应克制（因商业 hard 直接出局仅 22 家 ~7%，无批量误杀）。
+- 详见 `milestones/2026-06-24-phase2.md`、`2026-06-25-phase3.md`、`prd/Darwen_筛选逻辑与数据来源.md` §3.1/3.2/4.1。
 
 ---
 

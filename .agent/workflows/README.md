@@ -6,7 +6,7 @@
 
 | 工作流 | 用途 |
 |---|---|
-| `v2-implementation-roadmap.md` | 路线图 + **现行架构（三层全自动漏斗；2026-06-21 我的股票池首页 + 最新价/真 TTM PE + 漏斗手风琴）**；历史 M2-M7 供追溯 |
+| `v2-implementation-roadmap.md` | 路线图 + **现行架构（三层全自动漏斗；2026-06-24~25 风险指标融入漏斗 = 原著四类风险全量化/硬事实落点）**；历史 M2-M7 供追溯 |
 | `data-ingestion.md` | 数据接入工作流（SEC / Polygon / Tushare） |
 | `metric-computation.md` | 指标预计算工作流（ROCE 等） |
 | `ai-risk-layer.md` | AI 风险层调用、prompt 版本管理、失败回退 |
@@ -25,6 +25,12 @@
 > 直链巨潮（`text_document` doc_type=annual → detail 的 `cn_filings`）。
 > **资讯**：anns_d 个股公告入 `text_document` 喂 A股 AI 风险层；`major_news` 全市场入 `market_news`（市场资讯页 `/market-news`）。
 > 旧 Q/R/V（`funnel.py`/`v_layer.py`、`ScreenConfig.vue`/`ScreenResults.vue`）保留 deprecated。
+> **风险指标融入漏斗（2026-06-24~25）**：原著四类风险全部有量化/硬事实落点，**硬事实优先于 AI**——
+> 财务→稳健层 8 指标（`risk_v1`/`solvency_v1`）；治理→风险层硬事实（`governance_signal`：美股 8-K + A股 Tushare 质押/管理层）；
+> 行业→稳健层 peer 自建（`industry_v1`）；商业→稳健层客户/供应商集中度 + segment HHI（`commercial_v1`，
+> `backend/pipeline/commercial/` 从 10-K iXBRL / Tushare `fina_mainbz` 零采购抽取）。
+> 阈值 `config.py`、消费 `funnel_v2._eval_sturdiness`/`_eval_governance_facts`、回填 `scripts/backfill_commercial_signals.py`。
+> 详见 `milestones/2026-06-24-phase2.md`、`2026-06-25-phase3.md`、`prd/Darwen_筛选逻辑与数据来源.md`。
 > 详见 `milestones/2026-06-21.md`（前端 UX + 估值口径）、`2026-06-20.md`（全自动架构）、`2026-06-18.md`（层定义）。
 
 ## 通用规则
