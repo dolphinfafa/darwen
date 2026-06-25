@@ -1,5 +1,10 @@
 # -*- coding: utf-8 -*-
-"""股票池：S&P 500 核心成分股 (~200) + A股沪深300核心"""
+"""股票池种子：S&P 500 核心成分股 (~200) + A股沪深300核心 50（历史初始种子）。
+
+注：A股池已于 2026-06-26 通过 `scripts/expand_cn_universe.py` 扩到沪深300+中证500+中证1000
+全成分（1800 家，从 Tushare index_weight 动态拉取入库）。筛选 universe 由
+`api/screening._resolve_universe` 直接取 DB 全部 CN_A 公司，本文件的 CSI300_TOP50 仅为早期种子，
+不再是实际股票池上限。"""
 
 # ── S&P 500 核心 ~200 只（CIK → 公司名）──────────────────────────
 # 来源: SEC EDGAR company_tickers.json，按市值排序筛选

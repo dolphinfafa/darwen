@@ -1,6 +1,6 @@
 # Darwen 项目进度总览
 
-> 最后更新：2026-06-25
+> 最后更新：2026-06-26
 > 项目方向：V2 股票筛选系统（基于 Pulak Prasad《What I Learned About Investing from Darwin》）
 
 ---
@@ -88,6 +88,17 @@
 - **A股客户/供应商集中度 = 已知数据缺口**：Tushare 无免费结构化字段、年报文本为空；采购建议 CSMAR / Wind / iFinD / Choice（见 prd §3.1）。
 - 验证：18 单测全过；美股 813 份 10-K 回填 0 失败；净效应克制（因商业 hard 直接出局仅 22 家 ~7%，无批量误杀）。
 - 详见 `milestones/2026-06-24-phase2.md`、`2026-06-25-phase3.md`、`prd/Darwen_筛选逻辑与数据来源.md` §3.1/3.2/4.1。
+
+### 2026-06-26 A股股票池扩容（50 → 1800）+ 全量下游回填
+
+- **扩池**：`scripts/expand_cn_universe.py` 从 Tushare `index_weight` 拉沪深300+中证500+中证1000 去重 1800 只，
+  对新股全量入库（公司/三表/披露/12年日线/公告）。**1747 只新股 0 失败**；CN_A 50 → **1800 家**（美股仍 548）。
+- **下游全量回填**（`scripts/backfill_cn_downstream.py`）：指标预计算 1800/1800、行业 peer 重建（103 有效行业组）、
+  治理质押19.8万条/管理层、商业 segment HHI 1337家。
+- **最大收益**：行业 peer 对标 `rev_growth_vs_industry` 覆盖 ~12 → **1708 家**，A股「行业相对落后」判定全面生效；
+  治理/商业统计获全市场代表性。
+- 修复 `tushare_segment` NaN 崩溃（`bz_sales` 偶缺）；筛选 universe 由 DB 全量 CN_A 驱动，入库即自动扩池。
+- 详见 `milestones/2026-06-26-cn-universe-expansion.md`。
 
 ---
 
