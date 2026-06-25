@@ -79,10 +79,34 @@ CapitalEmployed = 净营运资本（剔除超额现金）+ 固定资产净值
 | **应收/存货增速领先营收（近 3Y 均值，取较激进者）** | > 5% / 8% / 12% 起 | > 30% / 40% / 60% | `STURDINESS_WC_GROWTH_LEAD` / `STURDINESS_WATCH_WC_GROWTH` | **solvency_v1** |
 | **现金周转周期 CCC 近 3 年恶化天数** | > 20 / 30 / 45 起 | > 90 / 120 / 180 | `STURDINESS_CCC_DETERIORATING` / `STURDINESS_WATCH_CCC` | **solvency_v1** |
 | **营收增速相对同行业**（近 3Y CAGR − 同市场同行业中位） | < −3 / −5 / −10 % | < −20 / −30 / −45 % | `STURDINESS_INDUSTRY_LAGGARD` / `STURDINESS_WATCH_INDUSTRY` | **industry_v1** |
+| **客户集中度**（top1 单一客户占营收比，美股 10-K） | ≥ 15 / 20 / 30 % | ≥ 30 / 40 / 55 % | `STURDINESS_CUSTOMER_CONCENTRATION` / `STURDINESS_WATCH_CUSTOMER` | **commercial_v1** |
+| **segment 收入 HHI**（业务多元化 Σ(分部营收占比)²，美股 10-K / A股 fina_mainbz） | ≥ 0.50 / 0.60 / 0.75 | ≥ 0.75 / 0.85 / 0.92 | `STURDINESS_SEGMENT_CONCENTRATION` / `STURDINESS_WATCH_SEGMENT` | **commercial_v1** |
+| **供应商集中度**（定性：依赖单一/有限供应商，美股 10-K） | 命中即 soft | （无量化 hard） | `STURDINESS_SUPPLIER_CONCENTRATION`（soft） | **commercial_v1** |
 
 > **行业 peer 自建**（`backend/metrics/industry_peer.py`）：零外部数据，按 `company.industry_name` + `fact.revenue`
 > 自建同行业（同市场）营收 CAGR 中位；样本 ≥5 家才计相对值（美股 71% 覆盖、A股因分散大多跳过）。
 > 对齐原著「不把快变化行业一刀切」——相对落后做 soft 预警，仅极端落后（hard 阈设深）才剔除（全市场 hard 仅 3 家）。
+
+> **商业深度自抽（零采购，`backend/pipeline/commercial/`）**：原著「商业风险」之客户/供应商集中度与业务多元化，
+> 经实测**可从已下载的完整 10-K（含内联 XBRL）免费抽取**，无需采购——
+> - **客户集中度**（`sec_commercial.py`）：抽 iXBRL `ConcentrationRiskPercentage1`，四重维度精确筛选
+>   （营收口径 + 客户类型 + **具体大客户成员** + **主报告期**），并**排除合并客户群/销售渠道成员**
+>   （如「前五大客户」「channel partners」会高估 top1，实测会误杀 General Mills/Zscaler）；iXBRL 缺失则文本正则兜底。
+>   全市场仅 4 家触发 hard（如 BWX 美政府 91%、Crown Castle T-Mobile 40%）。
+> - **segment 收入 HHI**：美股取 iXBRL `OperatingSegments × BusinessSegments` 两轴分部营收算 Σ(share²)；
+>   A股复用 Tushare `fina_mainbz`（type=P 主营构成，去重「其他/合计」兜底行）。HHI 越高越集中。
+> - **供应商集中度**：美股 10-K 极少披露采购占比数字，仅定性正则（sole/limited source）做 soft 旗标，写 `governance_signal`。
+> 与治理硬事实同理「硬事实优先于 AI」：有 10-K 数据时 `diversified_customers` / `diversified_suppliers` 两原则按规则判定，
+> 覆盖原 AI 占位；无数据才回落 AI。点时口径同其它 metric_periodic（按 period_end）。
+
+> **A股商业集中度——可行性结论与采购建议**：
+> - ✅ **segment HHI 可免费**：Tushare `fina_mainbz`（type=P 主营构成，本项目 token 已有权限），48/50 家覆盖、339 期落库。
+> - ❌ **客户/供应商集中度无任何免费结构化接口**：Tushare 全部财务接口（income/balancesheet/fina_indicator/fina_mainbz…）
+>   均无「前五大客户/供应商占比」字段；数据仅存在于年报 MD&A 文本（巨潮 cninfo），而本项目 A股 annual 文档 `content_text` 为空。
+> - **若要补 A股客户/供应商集中度**，两条路：
+>   1. *零采购但重*：巨潮年报 PDF/HTML 解析「前五名客户合计销售占比」「前五名供应商合计采购占比」（表格/OCR 解析，工程量大、噪声高）。
+>   2. *采购（结构化，推荐顺序）*：**CSMAR 国泰安「客户与供应商」专题库**（结构化前五大占比，覆盖全 A股历史，学术性价比高）；
+>      或 **Wind / 同花顺 iFinD / 东方财富 Choice**（均有「前五大客户占比」字段，API 可拉，商用授权，若已有账号可直接接）。
 
 > **Altman Z''**：X1=(流动资产−流动负债)/总资产，X2=留存收益/总资产，X3=EBIT/总资产，X4=股东权益/总负债（账面、跨行业、不依赖市值）；缺留存收益（A股 TS-FS 暂无）则置 None 跳过。
 > **CCC** = DSO+DIO−DPO（DSO=应收/营收·365，DIO=存货/COGS·365，DPO=应付/COGS·365；美股 COGS 缺则用 营收−毛利 反推）。负 CCC（如 Apple/Microsoft/美的，强势占用上下游资金）为优势，不触发。
@@ -96,8 +120,8 @@ CapitalEmployed = 净营运资本（剔除超额现金）+ 固定资产净值
 ### 3.2 AI 部分：4 类「不稳健」信号
 
 由 AI 判定（`ai/orchestrator.analyze_layer(layer="sturdiness")`），命中即扣分：
-- `customer_concentration_risk` 客户不够多元（如 top1>25% 或 top5>50%）
-- `supplier_concentration_risk` 供应商不够多元
+- `customer_concentration_risk` 客户不够多元 —— **已升级硬事实优先**（§3.1 commercial_v1），有 10-K 数据时按规则判，AI 仅作无数据兜底/佐证
+- `supplier_concentration_risk` 供应商不够多元 —— **同上**（10-K 定性旗标优先）
 - `disruption_risk` 行业变化快
 - `management_instability` 管理团队不稳定
 
@@ -138,6 +162,7 @@ CapitalEmployed = 净营运资本（剔除超额现金）+ 固定资产净值
   `backend/pipeline/governance/tushare_gov.py`（A股 Tushare `pledge_stat` 质押 + `stk_managers` 核心一把手离任）。
 - **美股 A股统一 signal_type**：`exec_departure` 同一计数逻辑（A股仅取董事长/总经理/财务总监等一把手，排除副职，使频率与美股 8-K 5.02 可比）。
 - **点时正确**：质押取 `event_date ≤ as_of` 最新一期快照（历史高质押但已解押的，按当期判定，不误伤）。
+- `governance_signal` 表已通用化：除治理红旗外，阶段3 的**供应商集中度**（`signal_type=supplier_concentration`，source=SEC-10K）也写此表。
 - 后续可继续往同表写：美股内部人交易（SEC Form 4）、A股股东集中（top10_holders）。
 - AI 介入仍按 `ai_mode`；硬事实与 AI 是「与」关系（硬事实出局 ∪ AI REVIEW/REJECT 出局）。
 

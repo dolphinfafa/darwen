@@ -142,6 +142,27 @@ class ScreenConfig:
         """极端落后行业(负)才 hard（原著：行业不一刀切，hard 阈设深）"""
         return {"strict": -0.20, "standard": -0.30, "loose": -0.45}[self.risk_sensitivity]
 
+    # ---- 商业深度（commercial_v1：客户集中度 / segment 收入 HHI，从 10-K 抽取）----
+    @property
+    def r_customer_concentration_soft(self) -> float:
+        """top1 客户占营收比 ≥ 此 → soft（客户集中预警）。原著「多元化客户」原则。"""
+        return {"strict": 0.15, "standard": 0.20, "loose": 0.30}[self.risk_sensitivity]
+
+    @property
+    def r_customer_concentration_hard(self) -> float:
+        """top1 客户占营收比 ≥ 此 → hard（单一客户依赖，议价权/断单风险）。hard 阈设深。"""
+        return {"strict": 0.30, "standard": 0.40, "loose": 0.55}[self.risk_sensitivity]
+
+    @property
+    def r_segment_hhi_soft(self) -> float:
+        """segment 营收 HHI ≥ 此 → soft（业务集中预警，多元化不足）。"""
+        return {"strict": 0.50, "standard": 0.60, "loose": 0.75}[self.risk_sensitivity]
+
+    @property
+    def r_segment_hhi_hard(self) -> float:
+        """segment 营收 HHI ≥ 此 → hard（高度单一业务）。原著「不一刀切」，hard 阈设深、多靠 soft 叠加。"""
+        return {"strict": 0.75, "standard": 0.85, "loose": 0.92}[self.risk_sensitivity]
+
     # 软警告叠加升级：达到此条数视为结构性脆弱，升级为硬剔除
     @property
     def r_soft_stack_to_hard(self) -> int:

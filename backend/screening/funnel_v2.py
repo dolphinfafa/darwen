@@ -64,6 +64,12 @@ STURDINESS_WATCH_CCC = "STURDINESS_WATCH_CCC"
 # 行业 peer 自建对标（industry_v1：营收增速相对同行业）
 STURDINESS_INDUSTRY_LAGGARD = "STURDINESS_INDUSTRY_LAGGARD"
 STURDINESS_WATCH_INDUSTRY = "STURDINESS_WATCH_INDUSTRY"
+# 商业深度（commercial_v1：客户/供应商集中度 + segment HHI，从 10-K 抽取）
+STURDINESS_CUSTOMER_CONCENTRATION = "STURDINESS_CUSTOMER_CONCENTRATION"
+STURDINESS_WATCH_CUSTOMER = "STURDINESS_WATCH_CUSTOMER"
+STURDINESS_SEGMENT_CONCENTRATION = "STURDINESS_SEGMENT_CONCENTRATION"
+STURDINESS_WATCH_SEGMENT = "STURDINESS_WATCH_SEGMENT"
+STURDINESS_SUPPLIER_CONCENTRATION = "STURDINESS_SUPPLIER_CONCENTRATION"
 # 风险层占位（阶段3 接 AI）
 RISK_PENDING_AI = "RISK_PENDING_AI"
 # 风险层治理硬事实（solvency 之外的第三层；source=governance_signal）
@@ -175,9 +181,21 @@ def _run_layer_ai(db: Session, company_id: str, asof: date, config: ScreenConfig
     return outcome.overall_action, outcome.ai_result_id, codes, outcome.output.labels
 
 
+def _has_supplier_concentration(db: Session, company_id: str, asof: date) -> bool:
+    """点时查 governance_signal 是否有供应商集中度软旗标（SEC-10K，commercial_v1）。"""
+    row = db.execute(
+        select(GovernanceSignal.signal_id)
+        .where(GovernanceSignal.company_id == company_id)
+        .where(GovernanceSignal.signal_type == "supplier_concentration")
+        .where(GovernanceSignal.event_date <= asof)
+        .limit(1)
+    ).first()
+    return row is not None
+
+
 def _eval_sturdiness(db: Session, company_id: str, asof: date, config: ScreenConfig,
                      user_id: Optional[int], run_id: Optional[int]) -> tuple[bool, dict]:
-    """稳健层：'无负债有充裕现金流' 规则 + 其余 4 条 AI 判定（启用 AI 时）。"""
+    """稳健层：可量化规则（含商业深度硬事实）+ 其余原则 AI 判定（启用 AI 时）。"""
     reason_codes: list[str] = []
     soft_codes: list[str] = []
     metrics: dict[str, float] = {}
@@ -191,6 +209,10 @@ def _eval_sturdiness(db: Session, company_id: str, asof: date, config: ScreenCon
     inv_lead = _latest_section(db, company_id, "inv_lead_3y", "solvency_v1", asof)
     ccc_delta = _latest_section(db, company_id, "ccc_delta_3y", "solvency_v1", asof)
     rev_vs_ind = _latest_section(db, company_id, "rev_growth_vs_industry", "industry_v1", asof)
+    # 商业深度（commercial_v1：客户集中度 / segment 收入 HHI，从 10-K 抽取）
+    cust_pct = _latest_section(db, company_id, "top_customer_revenue_pct", "commercial_v1", asof)
+    seg_hhi = _latest_section(db, company_id, "segment_revenue_hhi", "commercial_v1", asof)
+    supplier_flag = _has_supplier_concentration(db, company_id, asof)
     # 营运资本增长领先取应收/存货中较激进者
     wc_lead = None
     if ar_lead is not None or inv_lead is not None:
@@ -232,6 +254,14 @@ def _eval_sturdiness(db: Session, company_id: str, asof: date, config: ScreenCon
     # 行业 peer：营收增速显著落后同行业（越低越差，soft 为主、极端才 hard）
     _grade("rev_growth_vs_industry", rev_vs_ind, config.r_rev_lag_industry_soft, config.r_rev_lag_industry_hard,
            STURDINESS_INDUSTRY_LAGGARD, STURDINESS_WATCH_INDUSTRY, higher_worse=False)
+    # 商业深度（commercial_v1）：客户集中度 / segment HHI 越高越差，soft 为主、hard 设深
+    _grade("top_customer_revenue_pct", cust_pct, config.r_customer_concentration_soft,
+           config.r_customer_concentration_hard, STURDINESS_CUSTOMER_CONCENTRATION, STURDINESS_WATCH_CUSTOMER)
+    _grade("segment_revenue_hhi", seg_hhi, config.r_segment_hhi_soft, config.r_segment_hhi_hard,
+           STURDINESS_SEGMENT_CONCENTRATION, STURDINESS_WATCH_SEGMENT)
+    # 供应商集中度：10-K 定性旗标，仅 soft（计入软警告叠加，不单独硬剔除）
+    if supplier_flag:
+        soft_codes.append(STURDINESS_SUPPLIER_CONCENTRATION)
 
     # 软警告叠加升级：≥ 阈值视为结构性脆弱 → 升级硬剔除
     if len(soft_codes) >= config.r_soft_stack_to_hard:
@@ -239,6 +269,19 @@ def _eval_sturdiness(db: Session, company_id: str, asof: date, config: ScreenCon
         reason_codes.append(STURDINESS_SOFT_STACK)
     reason_codes.extend(soft_codes)
     rule_fail = hard_fail
+
+    # 商业深度硬事实优先：有 10-K 数据时，两条商业原则按规则判定（覆盖 AI 占位）
+    commercial_principles: dict[str, dict] = {}
+    if cust_pct is not None:
+        cust_status = ("fail" if STURDINESS_CUSTOMER_CONCENTRATION in reason_codes
+                       else "watch" if STURDINESS_WATCH_CUSTOMER in soft_codes else "pass")
+        commercial_principles["diversified_customers"] = {
+            "status": cust_status, "method": "rule",
+            "metrics": {"top_customer_revenue_pct": cust_pct}}
+    if supplier_flag:
+        commercial_principles["diversified_suppliers"] = {
+            "status": "watch", "method": "rule",
+            "reason": "10-K 披露依赖单一/有限供应商（sole/limited source）"}
 
     principles = {
         "no_debt_strong_cashflow": {"status": "fail" if rule_fail else "pass",
@@ -261,6 +304,9 @@ def _eval_sturdiness(db: Session, company_id: str, asof: date, config: ScreenCon
                                "reason": lbl.short_reason, "evidence_doc_ids": lbl.evidence_doc_ids}
         for p in _STURDINESS_PRINCIPLES[1:]:
             principles[p] = flagged.get(p, {"status": "pass", "method": "ai"})
+
+    # 硬事实优先：商业深度规则判定覆盖 AI/占位（diversified_customers / diversified_suppliers）
+    principles.update(commercial_principles)
 
     # REVIEW/REJECT 出局；PASS 与 MONITOR（"有轻微迹象但不阻止"）通过；None=未跑 AI 不出局
     ai_blocked = ai_action in ("REVIEW", "REJECT")

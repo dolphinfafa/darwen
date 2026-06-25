@@ -114,6 +114,12 @@ REASON_LABELS: dict[str, LabelEntry] = {
     # ---- 行业 peer 对标（industry_v1：自建同行业中位，样本 ≥5 才计）----
     "STURDINESS_INDUSTRY_LAGGARD": {"label": "行业掉队", "desc": "稳健层 hard：近 3Y 营收 CAGR 极端落后同行业中位（份额持续流失），仅深度落后才硬剔除", "layer": "R", "severity": "error"},
     "STURDINESS_WATCH_INDUSTRY": {"label": "增速逊行业", "desc": "稳健层 soft：营收增速落后同行业中位进入观察区（行业相对掉队预警）", "layer": "R", "severity": "warning"},
+    # ---- 商业深度（commercial_v1：客户/供应商集中度 + segment HHI，从 10-K 抽取）----
+    "STURDINESS_CUSTOMER_CONCENTRATION": {"label": "客户高度集中", "desc": "稳健层 hard：10-K 披露 top1 客户占营收比达硬阈值，单一客户依赖（议价权弱/断单风险）", "layer": "R", "severity": "error"},
+    "STURDINESS_WATCH_CUSTOMER": {"label": "客户集中", "desc": "稳健层 soft：10-K 披露 top1 客户占营收比进入观察区（多元化客户原则预警）", "layer": "R", "severity": "warning"},
+    "STURDINESS_SEGMENT_CONCENTRATION": {"label": "业务高度单一", "desc": "稳健层 hard：分部营收 HHI 达硬阈值，业务高度集中于单一板块（多元化不足）", "layer": "R", "severity": "error"},
+    "STURDINESS_WATCH_SEGMENT": {"label": "业务集中", "desc": "稳健层 soft：分部营收 HHI 进入观察区（业务多元化不足预警）", "layer": "R", "severity": "warning"},
+    "STURDINESS_SUPPLIER_CONCENTRATION": {"label": "供应商集中", "desc": "稳健层 soft：10-K 定性披露依赖单一/有限供应商（sole/limited source），供应链脆弱", "layer": "R", "severity": "warning"},
     "RISK_PENDING_AI": {"label": "待AI判定", "desc": "风险层：未启用 AI 或未绑定 key，暂占位放行，待人工/AI 复核", "layer": "META", "severity": "info"},
     "STURDINESS_AI_REVIEW": {"label": "稳健性AI存疑", "desc": "稳健层：AI 判定为 REVIEW（识别到非确凿的不稳健信号），按排除法出局", "layer": "R", "severity": "warning"},
     "RISK_AI_REVIEW": {"label": "风险性AI存疑", "desc": "风险层：AI 判定为 REVIEW（识别到非确凿的风险红旗），按排除法出局", "layer": "R", "severity": "warning"},
