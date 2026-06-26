@@ -167,7 +167,7 @@ async function reload() {
     if (filters.market) params.market = filters.market
     if (filters.industry) params.industry = filters.industry
     if (filters.search) params.search = filters.search
-    params.limit = 1000
+    params.limit = 5000   // 覆盖全市场（美股 548 + A股 1800+），避免被默认值截断
     const { data } = await getCompanies(params)
     rows.value = data
     // 切市场时也刷新行业列表

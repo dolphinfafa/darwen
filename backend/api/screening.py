@@ -79,7 +79,7 @@ def list_companies(
     market: Optional[str] = Query(None, description="US | CN_A | 空（全部）"),
     industry: Optional[str] = Query(None, description="industry_name 精确匹配"),
     search: Optional[str] = Query(None, description="ticker / name / company_id 模糊"),
-    limit: int = Query(1000, ge=1, le=2000),
+    limit: int = Query(5000, ge=1, le=10000),
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
