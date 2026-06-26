@@ -49,3 +49,6 @@ htmlcov/
 
 # Alembic
 migrations/versions/__pycache__/
+
+# 研究资料 / 文档资料包（含大体积 PDF，不入库）
+docs/
