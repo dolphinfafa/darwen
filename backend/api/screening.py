@@ -519,6 +519,16 @@ def get_funnel(
         else:
             survivors.append(fc)
 
+    # 按 ROCE（roce_median，回溯窗口中位）从高到低排序：入选与各层出局列表均如此，
+    # ROCE 缺失（Q0 排除 / 负资本等）排末尾。
+    def _roce_key(fc: FunnelCompany) -> float:
+        v = (fc.metrics_snapshot or {}).get("roce_median")
+        return v if isinstance(v, (int, float)) else float("-inf")
+
+    survivors.sort(key=_roce_key, reverse=True)
+    for _l in rejected_by_layer:
+        rejected_by_layer[_l].sort(key=_roce_key, reverse=True)
+
     cur = run.current_layer or "roce"
     done = (cur == "done") or (run.status == "completed")
     cur_idx = _LAYER_ORDER.index(cur) if cur in _LAYER_ORDER else len(_LAYER_ORDER)
